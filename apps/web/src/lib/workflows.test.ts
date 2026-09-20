@@ -384,6 +384,165 @@ describe("publishWorkflow", () => {
   });
 });
 
+describe("input fields", () => {
+  test("creates a workflow with multiple input fields", async () => {
+    const { client, calls } = fakeClient({});
+    const result = await createWorkflow(client, {
+      creator_id: CREATOR_A,
+      name: "Instagram Carousel",
+      description: null,
+      instructions: "Generate carousel.",
+      inputFields: [
+        { name: "topic", type: "string", required: true, description: "Topic" },
+        { name: "audience", type: "string", required: true },
+        { name: "includeCta", type: "boolean", required: false, description: "Include CTA" },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    const insert = calls.find((call) => call.op === "insert");
+    expect(insert?.payload).toMatchObject({
+      draft_definition: {
+        version: 1,
+        instructions: "Generate carousel.",
+        input: {
+          fields: [
+            { name: "topic", type: "string", required: true, description: "Topic" },
+            { name: "audience", type: "string", required: true },
+            { name: "includeCta", type: "boolean", required: false, description: "Include CTA" },
+          ],
+        },
+      },
+    });
+  });
+
+  test("updates draft input fields", async () => {
+    const { client, store, calls } = fakeClient({});
+    store.workflows.push(
+      draftRow({
+        draft_definition: {
+          version: 1,
+          instructions: "Generate carousel.",
+          input: { fields: [{ name: "topic", type: "string", required: true }] },
+        },
+      }),
+    );
+
+    const result = await updateWorkflowDraft(client, "wf-1", CREATOR_A, {
+      name: "Instagram Carousel",
+      description: null,
+      instructions: "Generate carousel.",
+      inputFields: [
+        { name: "topic", type: "string", required: true, description: "Main topic" },
+        { name: "tone", type: "string", required: false },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    const update = calls.find((call) => call.op === "update");
+    expect(update?.payload).toMatchObject({
+      draft_definition: {
+        version: 1,
+        instructions: "Generate carousel.",
+        input: {
+          fields: [
+            { name: "topic", type: "string", required: true, description: "Main topic" },
+            { name: "tone", type: "string", required: false },
+          ],
+        },
+      },
+    });
+  });
+
+  test("publish preserves input fields from draft_definition", async () => {
+    const { client, store } = fakeClient({});
+    store.workflows.push(
+      draftRow({
+        draft_definition: {
+          version: 1,
+          instructions: "Generate carousel.",
+          input: { fields: [{ name: "topic", type: "string", required: true }] },
+        },
+      }),
+    );
+
+    const result = await publishWorkflow(client, "wf-1", CREATOR_A);
+    expect(result.ok).toBe(true);
+
+    const row = store.workflows[0];
+    expect(row.published_definition).toEqual({
+      version: 1,
+      instructions: "Generate carousel.",
+      input: { fields: [{ name: "topic", type: "string", required: true }] },
+    });
+  });
+
+  test("legacy workflow without input fields remains backward-compatible", async () => {
+    const { client, store } = fakeClient({});
+    store.workflows.push(
+      draftRow({
+        draft_definition: { version: 1, instructions: "Legacy workflow.", input: { fields: [] } },
+      }),
+    );
+
+    const result = await getWorkflowForCreator(client, "wf-1", CREATOR_A);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.draft_definition.input.fields).toEqual([]);
+
+    const publishResult = await publishWorkflow(client, "wf-1", CREATOR_A);
+    expect(publishResult.ok).toBe(true);
+  });
+
+  test("rejects duplicate input field names", async () => {
+    const { client, calls } = fakeClient({});
+    const result = await createWorkflow(client, {
+      creator_id: CREATOR_A,
+      name: "Test",
+      description: null,
+      instructions: "x",
+      inputFields: [
+        { name: "topic", type: "string", required: true },
+        { name: "topic", type: "number", required: false },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect((result as { reason: string }).reason).toBe("invalid");
+    expect(calls.filter((call) => call.op === "insert")).toHaveLength(0);
+  });
+
+  test("rejects input field without a name", async () => {
+    const { client, calls } = fakeClient({});
+    const result = await createWorkflow(client, {
+      creator_id: CREATOR_A,
+      name: "Test",
+      description: null,
+      instructions: "x",
+      inputFields: [{ name: "", type: "string", required: true }],
+    });
+
+    expect(result.ok).toBe(false);
+    expect((result as { reason: string }).reason).toBe("invalid");
+    expect(calls.filter((call) => call.op === "insert")).toHaveLength(0);
+  });
+
+  test("rejects invalid input field type", async () => {
+    const { client, calls } = fakeClient({});
+    const result = await createWorkflow(client, {
+      creator_id: CREATOR_A,
+      name: "Test",
+      description: null,
+      instructions: "x",
+      inputFields: [{ name: "topic", type: "date", required: true } as unknown as { name: string; type: "string"; required: boolean }],
+    });
+
+    expect(result.ok).toBe(false);
+    expect((result as { reason: string }).reason).toBe("invalid");
+    expect(calls.filter((call) => call.op === "insert")).toHaveLength(0);
+  });
+});
+
 describe("public workflow queries", () => {
   test("only resolves published workflows", async () => {
     const { client, store } = fakeClient({});

@@ -21,6 +21,7 @@ export async function POST(request: Request, context: DraftRouteContext) {
     name: typeof body.name === "string" ? body.name : "",
     description: typeof body.description === "string" ? body.description : null,
     instructions: typeof body.instructions === "string" ? body.instructions : "",
+    inputFields: Array.isArray(body.inputFields) ? body.inputFields : undefined,
   });
 
   return workflowResultResponse(result);

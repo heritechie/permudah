@@ -39,6 +39,7 @@ export type WorkflowInput = {
   name: string;
   description: string | null;
   instructions: string;
+  inputFields?: WorkflowInputField[];
 };
 
 export type WorkflowErrorReason = "unauthorized" | "not_found" | "invalid" | "error";
@@ -84,12 +85,59 @@ export function nextWorkflowSlug(base: string, existing: string[]): string {
   return `${base}-${suffix}`;
 }
 
-export function definitionFromInstructions(instructions: string): WorkflowDefinition {
+export function definitionFromInstructions(
+  instructions: string,
+  inputFields?: WorkflowInputField[],
+): WorkflowDefinition {
+  const fields = (inputFields ?? []).filter((f) => f.name.trim() !== "");
   return {
     version: 1,
     instructions: instructions.trim(),
-    input: { fields: [] },
+    input: { fields },
   };
+}
+
+const VALID_FIELD_TYPES = new Set<WorkflowInputField["type"]>(["string", "number", "boolean"]);
+
+export function validateInputFields(
+  fields: unknown,
+): { ok: true; fields: WorkflowInputField[] } | { ok: false; message: string } {
+  if (!Array.isArray(fields)) {
+    return { ok: true, fields: [] };
+  }
+
+  const names = new Set<string>();
+  const validated: WorkflowInputField[] = [];
+
+  for (const item of fields) {
+    if (!item || typeof item !== "object") {
+      return { ok: false, message: "Each input field must be an object." };
+    }
+    const field = item as Record<string, unknown>;
+    const name = typeof field.name === "string" ? field.name.trim() : "";
+    if (!name) {
+      return { ok: false, message: "Every input field needs a name." };
+    }
+    if (names.has(name)) {
+      return { ok: false, message: `Duplicate input field name: ${name}.` };
+    }
+    names.add(name);
+
+    const type = field.type;
+    if (!VALID_FIELD_TYPES.has(type as WorkflowInputField["type"])) {
+      return { ok: false, message: `Invalid type for field "${name}". Use string, number, or boolean.` };
+    }
+
+    const description = typeof field.description === "string" ? field.description.trim() || undefined : undefined;
+    validated.push({
+      name,
+      type: type as WorkflowInputField["type"],
+      required: Boolean(field.required),
+      description,
+    });
+  }
+
+  return { ok: true, fields: validated };
 }
 
 export function isNewWorkflowDefinition(
@@ -192,6 +240,10 @@ export async function createWorkflow(
     return { ok: false, reason: "invalid", message: "Name and instructions are required." };
   }
   const description = input.description?.trim() || null;
+  const fieldValidation = validateInputFields(input.inputFields);
+  if (!fieldValidation.ok) {
+    return { ok: false, reason: "invalid", message: fieldValidation.message };
+  }
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const slugResult = await findUniqueWorkflowSlug(client, input.creator_id, name);
@@ -204,7 +256,7 @@ export async function createWorkflow(
         name,
         description,
         status: "draft",
-        draft_definition: definitionFromInstructions(instructions),
+        draft_definition: definitionFromInstructions(instructions, fieldValidation.fields),
         published_definition: null,
         published_at: null,
       })
@@ -267,12 +319,16 @@ export async function updateWorkflowDraft(
     return { ok: false, reason: "invalid", message: "Name and instructions are required." };
   }
   const description = input.description?.trim() || null;
+  const fieldValidation = validateInputFields(input.inputFields);
+  if (!fieldValidation.ok) {
+    return { ok: false, reason: "invalid", message: fieldValidation.message };
+  }
   const { data, error } = await client
     .from("workflows")
     .update({
       name,
       description,
-      draft_definition: definitionFromInstructions(instructions),
+      draft_definition: definitionFromInstructions(instructions, fieldValidation.fields),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
@@ -353,46 +409,3 @@ export async function getPublishedWorkflowsForCreator(
 export type PublishedWorkflowWithDefinition = PublicWorkflow & {
   published_definition: WorkflowDefinition | null;
 };
-
-/**
- * Fetch a single published workflow with its full definition (including input schema).
- * Used by the MCP server to discover the tool schema dynamically.
- */
-export async function getPublishedWorkflowForMcp(
-  client: SupabaseClient,
-  creatorSlug: string,
-  workflowSlug: string,
-): Promise<PublishedWorkflowWithDefinition | null> {
-  // First resolve creator slug to creator_id
-  const { data: creator, error: creatorError } = await client
-    .from("creators")
-    .select("id")
-    .eq("slug", creatorSlug)
-    .maybeSingle();
-  if (creatorError || !creator) return null;
-
-  const { data, error } = await client
-    .from("public_workflows")
-    .select("id, creator_id, slug, name, description, published_definition, published_at, updated_at")
-    .eq("creator_id", creator.id)
-    .eq("slug", workflowSlug)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data as PublishedWorkflowWithDefinition;
-}
-
-/**
- * Find the first published Instagram Carousel workflow for MCP tool discovery.
- * This is a POC-specific function that finds a workflow with the expected input fields.
- */
-export async function findInstagramCarouselWorkflow(
-  client: SupabaseClient,
-): Promise<PublishedWorkflowWithDefinition | null> {
-  const { data, error } = await client
-    .from("public_workflows")
-    .select("id, creator_id, slug, name, description, published_definition, published_at, updated_at")
-    .like("name", "%Instagram%Carousel%")
-    .limit(1);
-  if (error || !data || data.length === 0) return null;
-  return data[0] as PublishedWorkflowWithDefinition;
-}

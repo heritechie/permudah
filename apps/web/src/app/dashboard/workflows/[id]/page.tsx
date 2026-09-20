@@ -7,6 +7,7 @@ import { originFromHeaders } from "@/lib/hostname";
 import { createClient } from "@/lib/supabase/server";
 import {
   getWorkflowForCreator,
+  inputFieldsFromDefinition,
   instructionsFromDefinition,
   workflowStatusLabel,
 } from "@/lib/workflows";
@@ -32,6 +33,7 @@ export default async function EditWorkflowPage({ params }: EditWorkflowPageProps
 
   const workflow = result.data;
   const instructions = instructionsFromDefinition(workflow.draft_definition);
+  const inputFields = inputFieldsFromDefinition(workflow.draft_definition);
   const origin = originFromHeaders(await headers());
 
   return (
@@ -66,11 +68,12 @@ export default async function EditWorkflowPage({ params }: EditWorkflowPageProps
             workflowId={workflow.id}
             workflowSlug={workflow.slug}
             status={workflow.status}
-            initial={{
-              name: workflow.name,
-              description: workflow.description ?? "",
-              instructions,
-            }}
+          initial={{
+            name: workflow.name,
+            description: workflow.description ?? "",
+            instructions,
+            inputFields,
+          }}
           />
         </div>
       </div>
