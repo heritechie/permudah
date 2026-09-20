@@ -4,6 +4,7 @@ import {
   creatorStorefrontUrl,
   normalizeCreatorSlug,
   resolvePostAuthDestination,
+  sanitizeSlugInput,
   validateCreatorSlug,
 } from "./slug";
 
@@ -11,6 +12,26 @@ describe("normalizeCreatorSlug", () => {
   test("lowercases and trims", () => {
     expect(normalizeCreatorSlug("  MasterDigital  ")).toBe("masterdigital");
     expect(normalizeCreatorSlug("MY-CREATOR")).toBe("my-creator");
+  });
+});
+
+describe("sanitizeSlugInput", () => {
+  test("lowercases", () => {
+    expect(sanitizeSlugInput("MasterDigital")).toBe("masterdigital");
+  });
+
+  test("keeps letters, numbers and hyphens", () => {
+    expect(sanitizeSlugInput("my-creator-2")).toBe("my-creator-2");
+  });
+
+  test("removes invalid characters and whitespace", () => {
+    expect(sanitizeSlugInput("  Mas ter!Digital.  ")).toBe("masterdigital");
+  });
+
+  test("is idempotent", () => {
+    expect(sanitizeSlugInput(sanitizeSlugInput("Mas ter!Digital"))).toBe(
+      "masterdigital",
+    );
   });
 });
 

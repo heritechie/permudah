@@ -17,6 +17,10 @@ export function normalizeCreatorSlug(slug: string): string {
   return slug.trim().toLowerCase();
 }
 
+export function sanitizeSlugInput(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9-]/g, "");
+}
+
 export type SlugValidation =
   | { ok: true; slug: string }
   | { ok: false; reason: "required" | "invalid" | "reserved" };

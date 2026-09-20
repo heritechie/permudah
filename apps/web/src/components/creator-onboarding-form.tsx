@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createCreatorWithClient } from "@/lib/create-creator";
 import { createClient } from "@/lib/supabase/client";
-import { creatorStorefrontUrl, validateCreatorSlug } from "@/lib/slug";
+import {
+  creatorStorefrontUrl,
+  sanitizeSlugInput,
+  validateCreatorSlug,
+} from "@/lib/slug";
 
 type Availability = "idle" | "checking" | "available" | "taken";
 
@@ -168,10 +172,7 @@ export function CreatorOnboardingForm() {
         >
           Storefront URL
         </label>
-        <div className="relative mt-1.5">
-          <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-sm text-zinc-400">
-            {normalized || "slug"}.
-          </span>
+        <div className="mt-1.5 flex items-center rounded-lg border border-slate-300 bg-white transition focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
           <input
             id="slug"
             name="slug"
@@ -181,11 +182,13 @@ export function CreatorOnboardingForm() {
             autoCorrect="off"
             spellCheck={false}
             value={slugInput}
-            onChange={(event) => setSlugInput(event.target.value)}
+            onChange={(event) =>
+              setSlugInput(sanitizeSlugInput(event.target.value))
+            }
             placeholder="masterdigital"
-            className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pr-24 pl-20 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            className="w-full min-w-0 flex-1 bg-transparent px-3.5 py-2.5 text-sm text-slate-900 outline-none"
           />
-          <span className="pointer-events-none absolute inset-y-0 right-3.5 flex items-center text-sm text-zinc-400">
+          <span className="shrink-0 pr-3.5 text-sm text-zinc-400">
             .permudah.com
           </span>
         </div>
