@@ -65,3 +65,14 @@ export function hostnameFromHeaders(headers: {
   const host = headers.get("host");
   return parseHostname(forwarded ?? host);
 }
+
+export function originFromHeaders(headers: {
+  get(name: string): string | null;
+}): string {
+  const forwarded = headers.get("x-forwarded-host");
+  const host = headers.get("host");
+  const proto = headers.get("x-forwarded-proto") ?? "https";
+  const value = (forwarded ?? host ?? "").trim().toLowerCase();
+  if (!value) return `https://${APP_ROOT_DOMAIN}`;
+  return `${proto}://${value}`;
+}

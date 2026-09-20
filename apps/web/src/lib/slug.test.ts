@@ -6,6 +6,7 @@ import {
   resolvePostAuthDestination,
   sanitizeSlugInput,
   validateCreatorSlug,
+  workflowPublicUrl,
 } from "./slug";
 
 describe("normalizeCreatorSlug", () => {
@@ -117,5 +118,19 @@ describe("resolvePostAuthDestination", () => {
     expect(
       resolvePostAuthDestination({ slug: "masterdigital" }, "http://localhost:3000"),
     ).toBe("http://masterdigital.localhost:3000");
+  });
+});
+
+describe("workflowPublicUrl", () => {
+  test("builds the public workflow URL on the creator subdomain", () => {
+    expect(
+      workflowPublicUrl("masterdigital", "instagram-carousel"),
+    ).toBe("https://masterdigital.permudah.com/instagram-carousel");
+  });
+
+  test("uses the local origin for local development", () => {
+    expect(
+      workflowPublicUrl("masterdigital", "instagram-carousel", "http://localhost:3000"),
+    ).toBe("http://masterdigital.localhost:3000/instagram-carousel");
   });
 });

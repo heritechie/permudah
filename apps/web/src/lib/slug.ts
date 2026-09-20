@@ -53,6 +53,14 @@ export function creatorStorefrontUrl(slug: string, origin?: string): string {
   return `https://${slug}.${APP_ROOT_DOMAIN}`;
 }
 
+export function workflowPublicUrl(
+  creatorSlug: string,
+  workflowSlug: string,
+  origin?: string,
+): string {
+  return `${creatorStorefrontUrl(creatorSlug, origin)}/${workflowSlug}`;
+}
+
 export function resolvePostAuthDestination(
   creator: { slug: string } | null,
   origin?: string,

@@ -3,7 +3,7 @@ import Image from "next/image";
 import { EarlyAccessForm } from "@/components/early-access-form";
 import { Header } from "@/components/header";
 import { ProductFlow } from "@/components/product-flow";
-import { StorefrontPlaceholder } from "@/components/storefront-placeholder";
+import { Storefront } from "@/components/storefront";
 import {
   getDictionary,
   localeCookieName,
@@ -18,13 +18,7 @@ export default async function Home() {
 
   if (hostInfo.kind === "creator") {
     const creator = await getCreatorBySlug(hostInfo.slug);
-    return (
-      <StorefrontPlaceholder
-        name={creator?.display_name ?? hostInfo.displayName}
-        bio={creator?.bio ?? null}
-        registered={Boolean(creator)}
-      />
-    );
+    return <Storefront creator={creator} displayName={hostInfo.displayName} />;
   }
 
   const hero = getDictionary(
