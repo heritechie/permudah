@@ -134,7 +134,7 @@ function draftRow(overrides: Partial<WorkflowRow> = {}): WorkflowRow {
     name: "Instagram Carousel",
     description: null,
     status: "draft",
-    draft_definition: { instructions: "Write a caption." },
+    draft_definition: { version: 1, instructions: "Write a caption.", input: { fields: [] } },
     published_definition: null,
     created_at: "2026-09-20T00:00:00.000Z",
     updated_at: "2026-09-20T00:00:00.000Z",
@@ -283,8 +283,8 @@ describe("updateWorkflowDraft", () => {
   test("persists the draft and leaves the published version untouched", async () => {
     const published = draftRow({
       status: "published",
-      draft_definition: { instructions: "new draft version" },
-      published_definition: { instructions: "old published version" },
+      draft_definition: { version: 1, instructions: "new draft version", input: { fields: [] } },
+      published_definition: { version: 1, instructions: "old published version", input: { fields: [] } },
       published_at: "2026-09-10T00:00:00.000Z",
     });
     const { client, calls, store } = fakeClient({});
@@ -309,9 +309,13 @@ describe("updateWorkflowDraft", () => {
     expect(update?.payload).not.toHaveProperty("published_at");
 
     const row = store.workflows[0];
-    expect(row.published_definition).toEqual({ instructions: "old published version" });
+    expect(row.published_definition).toEqual({ version: 1, instructions: "old published version", input: { fields: [] } });
     expect(row.status).toBe("published");
-    expect(row.draft_definition).toEqual({ instructions: "newer draft version" });
+    expect(row.draft_definition).toEqual({
+      version: 1,
+      instructions: "newer draft version",
+      input: { fields: [] },
+    });
   });
 
   test("rejects empty input", async () => {
@@ -342,7 +346,7 @@ describe("updateWorkflowDraft", () => {
 describe("publishWorkflow", () => {
   test("copies draft_definition to published_definition in one atomic update", async () => {
     const { client, calls, store } = fakeClient({});
-    store.workflows.push(draftRow({ draft_definition: { instructions: "the final version" } }));
+    store.workflows.push(draftRow({ draft_definition: { version: 1, instructions: "the final version", input: { fields: [] } } }));
 
     const result = await publishWorkflow(client, "wf-1", CREATOR_A);
 
@@ -350,7 +354,7 @@ describe("publishWorkflow", () => {
     const update = calls.find((call) => call.op === "update");
     expect(update?.payload).toMatchObject({
       status: "published",
-      published_definition: { instructions: "the final version" },
+      published_definition: { version: 1, instructions: "the final version", input: { fields: [] } },
     });
     expect(update?.payload).toHaveProperty("published_at");
     expect(update?.payload).toHaveProperty("updated_at");
@@ -359,13 +363,13 @@ describe("publishWorkflow", () => {
 
     const row = store.workflows[0];
     expect(row.status).toBe("published");
-    expect(row.published_definition).toEqual({ instructions: "the final version" });
+    expect(row.published_definition).toEqual({ version: 1, instructions: "the final version", input: { fields: [] } });
     expect(row.published_at).toBeTruthy();
   });
 
   test("rejects an empty draft", async () => {
     const { client, calls, store } = fakeClient({});
-    store.workflows.push(draftRow({ draft_definition: { instructions: "" } }));
+    store.workflows.push(draftRow({ draft_definition: { version: 1, instructions: "", input: { fields: [] } } }));
     const result = await publishWorkflow(client, "wf-1", CREATOR_A);
     expect(result.ok).toBe(false);
     expect((result as { reason: string }).reason).toBe("invalid");

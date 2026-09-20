@@ -1,7 +1,10 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { createMcpServer } from "./server.js";
 
-interface Env {}
+interface Env {
+  SUPABASE_URL: string;
+  SUPABASE_ANON_KEY: string;
+}
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -19,7 +22,7 @@ const CORS_HEADERS: Record<string, string> = {
  * fallback ke POST-only.
  */
 export const workerHandler = {
-  async fetch(request: Request, _env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
@@ -28,11 +31,13 @@ export const workerHandler = {
       return new Response(null, { status: 405, headers: CORS_HEADERS });
     }
 
+    // Create server and load workflow for this request
+    const server = await createMcpServer(env);
+
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: false,
     });
-    const server = createMcpServer();
     await server.connect(transport);
 
     const response = await transport.handleRequest(request);

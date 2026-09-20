@@ -1,24 +1,56 @@
 import { z } from "zod";
 
-export const INSTAGRAM_CAROUSEL_PARAMS = {
-  topic: z
-    .string()
-    .min(1, "topic wajib diisi")
-    .max(200)
-    .describe("Topik utama carousel"),
-  audience: z
-    .string()
-    .min(1, "audience wajib diisi")
-    .max(200)
-    .describe("Target audiens pembaca carousel"),
-  tone: z
-    .string()
-    .min(1, "tone wajib diisi")
-    .max(100)
-    .describe("Nada/gaya penulisan yang diinginkan"),
-};
+function zodTypeFromField(field: {
+  name: string;
+  type: "string" | "number" | "boolean";
+  required: boolean;
+  description?: string;
+}): z.ZodTypeAny {
+  let schema: z.ZodTypeAny;
+  switch (field.type) {
+    case "number":
+      schema = z.number();
+      break;
+    case "boolean":
+      schema = z.boolean();
+      break;
+    case "string":
+    default: {
+      let strSchema = z.string();
+      if (field.required) {
+        strSchema = strSchema.min(1, `${field.name} wajib diisi`);
+      }
+      schema = strSchema;
+      break;
+    }
+  }
+  if (field.description) {
+    schema = schema.describe(field.description);
+  }
+  return field.required ? schema : schema.optional();
+}
 
-export const INSTAGRAM_CAROUSEL_OUTPUT = z.object({
+/**
+ * Build a zod raw shape from workflow input fields.
+ */
+export function buildInputSchemaFromFields(fields: Array<{
+  name: string;
+  type: "string" | "number" | "boolean";
+  required: boolean;
+  description?: string;
+}>): Record<string, z.ZodTypeAny> {
+  const shape: Record<string, z.ZodTypeAny> = {};
+  for (const field of fields) {
+    shape[field.name] = zodTypeFromField(field);
+  }
+  return shape;
+}
+
+/**
+ * Build a zod schema for the output based on the workflow definition.
+ * For POC, we use a fixed carousel output structure since we don't have LLM execution.
+ */
+export const WORKFLOW_OUTPUT_SCHEMA = z.object({
   title: z.string().describe("Judul carousel"),
   slides: z.array(
     z.object({
@@ -29,13 +61,7 @@ export const INSTAGRAM_CAROUSEL_OUTPUT = z.object({
   ),
 });
 
-export type InstagramCarouselInput = {
-  topic: string;
-  audience: string;
-  tone: string;
-};
-
-export type InstagramCarouselOutput = z.infer<typeof INSTAGRAM_CAROUSEL_OUTPUT>;
+export type WorkflowOutput = z.infer<typeof WORKFLOW_OUTPUT_SCHEMA>;
 
 function normalize(text: string): string {
   return text.trim().replace(/\s+/g, " ");
@@ -48,39 +74,85 @@ function capitalize(text: string): string {
     : normalized;
 }
 
-export function buildInstagramCarousel(
-  input: InstagramCarouselInput
-): InstagramCarouselOutput {
-  const topic = capitalize(input.topic);
-  const audience = capitalize(input.audience);
-  const tone = normalize(input.tone);
+/**
+ * Deterministic mock execution based on workflow instructions and input.
+ * This replaces the hardcoded carousel logic - it now uses the workflow's
+ * instructions as a template guide.
+ */
+export function executeWorkflow(
+  workflowInstructions: string,
+  input: Record<string, unknown>
+): WorkflowOutput {
+  // Extract key variables from input with sensible defaults
+  const topic = String(input.topic ?? "Topik");
+  const audience = String(input.audience ?? "Audiens");
+  const tone = String(input.tone ?? "netral");
+
+  // For POC: deterministic mock that incorporates the workflow instructions
+  // In a real implementation, this would call an LLM with the instructions
+  const topicC = capitalize(topic);
+  const audienceC = capitalize(audience);
+  const toneNorm = normalize(tone);
 
   return {
-    title: `${topic} — panduan ringkas dalam 3 slide`,
+    title: `${topicC} — ${workflowInstructions.slice(0, 40)}...`,
     slides: [
       {
         slide: 1,
-        headline: `Apa itu: ${topic}?`,
-        body: `Dalam 1 menit, pahami intisari ${topic} dan kenapa hal ini relevan untuk ${audience}. Ditulis dengan nada ${tone}.`,
+        headline: `Apa itu: ${topicC}?`,
+        body: `Mengikuti instruksi workflow: ${workflowInstructions}. Topik: ${topicC}, Audiens: ${audienceC}, Tone: ${toneNorm}.`,
       },
       {
         slide: 2,
-        headline: `Kenapa ${audience} harus peduli`,
-        body: `Satu poin utama yang membuat ${topic} berdampak langsung untuk ${audience}. Simpan slide ini untuk dibagikan.`,
+        headline: `Kenapa ${audienceC} harus peduli`,
+        body: `Workflow menyarankan: ${workflowInstructions}. Poin utama untuk ${audienceC}.`,
       },
       {
         slide: 3,
         headline: "Langkah berikutnya",
-        body: `Mulai dari hal kecil: terapkan satu ide dari carousel ini hari ini, lalu bagikan hasilnya kepada ${audience}.`,
+        body: `Terapkan ide dari workflow: ${workflowInstructions}. Mulai hari ini.`,
       },
     ],
   };
 }
 
-export function instagramCarouselHandler(input: InstagramCarouselInput) {
-  const result = buildInstagramCarousel(input);
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-    structuredContent: result,
+/**
+ * Create the tool handler that executes the workflow.
+ * This replaces the hardcoded instagramCarouselHandler.
+ */
+export function createWorkflowToolHandler(workflowInstructions: string) {
+  return (input: Record<string, unknown>) => {
+    const result = executeWorkflow(workflowInstructions, input);
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+      structuredContent: result,
+    };
   };
+}
+
+/**
+ * Deterministic MCP tool name from workflow slug.
+ * Example: instagram-carousel -> generate_instagram_carousel
+ */
+export function toolNameFromWorkflowSlug(slug: string): string {
+  return `generate_${slug.replace(/-/g, "_")}`;
+}
+
+/**
+ * Reverse mapping: MCP tool name -> workflow slug.
+ * Example: generate_instagram_carousel -> instagram-carousel
+ */
+export function workflowSlugFromToolName(toolName: string): string | null {
+  const prefix = "generate_";
+  if (!toolName.startsWith(prefix)) return null;
+  return toolName.slice(prefix.length).replace(/_/g, "-");
+}
+
+/**
+ * Expected output for test verification (matches mock workflow instructions)
+ */
+export const MOCK_WORKFLOW_INSTRUCTIONS = "Generate a 3-slide Instagram carousel about the given topic for the target audience using the specified tone.";
+
+export function expectedMockOutput(input: Record<string, unknown>): WorkflowOutput {
+  return executeWorkflow(MOCK_WORKFLOW_INSTRUCTIONS, input);
 }

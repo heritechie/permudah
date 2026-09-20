@@ -2,7 +2,24 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type WorkflowStatus = "draft" | "published" | "archived";
 
-export type WorkflowDefinition = { instructions: string };
+export type WorkflowInputField = {
+  name: string;
+  type: "string" | "number" | "boolean";
+  required: boolean;
+  description?: string;
+};
+
+export type WorkflowDefinition = {
+  version: number;
+  instructions: string;
+  input: {
+    fields: WorkflowInputField[];
+  };
+};
+
+export type LegacyWorkflowDefinition = {
+  instructions: string;
+};
 
 export type WorkflowRow = {
   id: string;
@@ -68,13 +85,38 @@ export function nextWorkflowSlug(base: string, existing: string[]): string {
 }
 
 export function definitionFromInstructions(instructions: string): WorkflowDefinition {
-  return { instructions: instructions.trim() };
+  return {
+    version: 1,
+    instructions: instructions.trim(),
+    input: { fields: [] },
+  };
+}
+
+export function isNewWorkflowDefinition(
+  def: WorkflowDefinition | LegacyWorkflowDefinition | null | undefined
+): def is WorkflowDefinition {
+  return (
+    !!def &&
+    typeof def === "object" &&
+    "version" in def &&
+    "input" in def &&
+    "instructions" in def
+  );
 }
 
 export function instructionsFromDefinition(definition: unknown): string {
   if (!definition || typeof definition !== "object") return "";
-  const value = (definition as Record<string, unknown>).instructions;
+  const def = definition as Record<string, unknown>;
+  const value = def.instructions;
   return typeof value === "string" ? value : "";
+}
+
+export function inputFieldsFromDefinition(definition: unknown): WorkflowInputField[] {
+  if (!definition || typeof definition !== "object") return [];
+  const def = definition as Record<string, unknown>;
+  if (!isNewWorkflowDefinition(def as WorkflowDefinition | LegacyWorkflowDefinition | null | undefined)) return [];
+  const input = def.input as { fields?: WorkflowInputField[] } | undefined;
+  return input?.fields ?? [];
 }
 
 export function workflowStatusLabel(status: string): string {
@@ -306,4 +348,51 @@ export async function getPublishedWorkflowsForCreator(
     .order("published_at", { ascending: false });
   if (error) return [];
   return (data ?? []) as PublicWorkflow[];
+}
+
+export type PublishedWorkflowWithDefinition = PublicWorkflow & {
+  published_definition: WorkflowDefinition | null;
+};
+
+/**
+ * Fetch a single published workflow with its full definition (including input schema).
+ * Used by the MCP server to discover the tool schema dynamically.
+ */
+export async function getPublishedWorkflowForMcp(
+  client: SupabaseClient,
+  creatorSlug: string,
+  workflowSlug: string,
+): Promise<PublishedWorkflowWithDefinition | null> {
+  // First resolve creator slug to creator_id
+  const { data: creator, error: creatorError } = await client
+    .from("creators")
+    .select("id")
+    .eq("slug", creatorSlug)
+    .maybeSingle();
+  if (creatorError || !creator) return null;
+
+  const { data, error } = await client
+    .from("public_workflows")
+    .select("id, creator_id, slug, name, description, published_definition, published_at, updated_at")
+    .eq("creator_id", creator.id)
+    .eq("slug", workflowSlug)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as PublishedWorkflowWithDefinition;
+}
+
+/**
+ * Find the first published Instagram Carousel workflow for MCP tool discovery.
+ * This is a POC-specific function that finds a workflow with the expected input fields.
+ */
+export async function findInstagramCarouselWorkflow(
+  client: SupabaseClient,
+): Promise<PublishedWorkflowWithDefinition | null> {
+  const { data, error } = await client
+    .from("public_workflows")
+    .select("id, creator_id, slug, name, description, published_definition, published_at, updated_at")
+    .like("name", "%Instagram%Carousel%")
+    .limit(1);
+  if (error || !data || data.length === 0) return null;
+  return data[0] as PublishedWorkflowWithDefinition;
 }
