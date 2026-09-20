@@ -1,5 +1,16 @@
 {
   "name": "permudah",
   "private": true,
-  "packageManager": "pnpm@10.12.1"
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "start": "pnpm --filter web start",
+    "lint": "pnpm --filter web lint",
+    "dev:vinext": "pnpm --filter web dev:vinext",
+    "build:vinext": "pnpm --filter web build:vinext",
+    "start:vinext": "pnpm --filter web start:vinext",
+    "deploy:vinext": "pnpm --filter web deploy:vinext",
+    "check:vinext": "pnpm --filter web exec vinext check"
+  }
 }
