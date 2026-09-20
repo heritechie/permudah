@@ -4,10 +4,10 @@
   "packageManager": "pnpm@10.12.1",
   "scripts": {
     "dev": "pnpm --filter web dev",
-    "build": "pnpm --filter web build",
+    "build": "pnpm -r build",
     "start": "pnpm --filter web start",
-    "lint": "pnpm --filter web lint",
-    "test": "pnpm --filter web test",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
     "dev:vinext": "pnpm --filter web dev:vinext",
     "build:vinext": "pnpm --filter web build:vinext",
     "start:vinext": "pnpm --filter web start:vinext",
