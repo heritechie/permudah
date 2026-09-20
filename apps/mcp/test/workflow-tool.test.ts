@@ -3,17 +3,24 @@ import { z } from "zod";
 import {
   buildInputSchemaFromFields,
   WORKFLOW_OUTPUT_SCHEMA,
-  executeWorkflow,
-  expectedMockOutput,
+  buildExecutionContext,
+  createWorkflowToolHandler,
   MOCK_WORKFLOW_INSTRUCTIONS,
   toolNameFromWorkflowSlug,
   workflowSlugFromToolName,
-} from "../src/tools/instagram-carousel.js";
+} from "../src/tools/workflow-tool.js";
 
 const INPUT = {
   topic: "AI untuk UMKM",
   audience: "pemilik toko online",
   tone: "ramah",
+};
+
+const WORKFLOW = {
+  slug: "instagram-carousel",
+  name: "Instagram Carousel Generator",
+  description: "Generate Instagram carousel content",
+  instructions: MOCK_WORKFLOW_INSTRUCTIONS,
 };
 
 const mockFields = [
@@ -34,7 +41,6 @@ describe("buildInputSchemaFromFields", () => {
     const schema = buildInputSchemaFromFields(mockFields);
     const topicSchema = schema.topic;
     const toneSchema = schema.tone;
-    // Required fields should not be optional
     expect(topicSchema.isOptional?.()).toBe(false);
     expect(toneSchema.isOptional?.()).toBe(true);
   });
@@ -47,52 +53,74 @@ describe("buildInputSchemaFromFields", () => {
   });
 });
 
-describe("executeWorkflow", () => {
-  it("produces deterministic output for the same input", () => {
-    const a = executeWorkflow(MOCK_WORKFLOW_INSTRUCTIONS, INPUT);
-    const b = executeWorkflow(MOCK_WORKFLOW_INSTRUCTIONS, INPUT);
-    expect(a).toEqual(b);
-  });
-
-  it("produces output with title and 3 slides", () => {
-    const out = executeWorkflow(MOCK_WORKFLOW_INSTRUCTIONS, INPUT);
-    expect(out.title).toContain("AI untuk UMKM");
-    expect(out.slides).toHaveLength(3);
-    expect(out.slides.map((s) => s.slide)).toEqual([1, 2, 3]);
-  });
-
-  it("incorporates workflow instructions into the output", () => {
-    const out = executeWorkflow(MOCK_WORKFLOW_INSTRUCTIONS, INPUT);
-    expect(out.slides[0].body).toContain("Mengikuti instruksi workflow");
-    expect(out.slides[0].body).toContain(MOCK_WORKFLOW_INSTRUCTIONS.slice(0, 20));
-  });
-
-  it("incorporates topic, audience, and tone into the output", () => {
-    const out = executeWorkflow(MOCK_WORKFLOW_INSTRUCTIONS, {
-      topic: "SEO",
-      audience: "penulis blog",
-      tone: "energik",
+describe("buildExecutionContext", () => {
+  it("returns workflow metadata, instructions, and input", () => {
+    const context = buildExecutionContext(WORKFLOW, INPUT);
+    expect(context).toEqual({
+      workflow: {
+        slug: WORKFLOW.slug,
+        name: WORKFLOW.name,
+        description: WORKFLOW.description,
+        instructions: WORKFLOW.instructions,
+      },
+      input: INPUT,
     });
-    expect(out.title).toContain("SEO");
-    expect(out.slides[0].body).toContain("Penulis blog");
-    expect(out.slides[0].body).toContain("energik");
   });
 
-  it("always satisfies the declared output schema", () => {
-    const out = executeWorkflow(MOCK_WORKFLOW_INSTRUCTIONS, INPUT);
-    expect(WORKFLOW_OUTPUT_SCHEMA.safeParse(out).success).toBe(true);
+  it("includes the workflow marker in instructions", () => {
+    const context = buildExecutionContext(WORKFLOW, INPUT);
+    expect(context.workflow.instructions).toContain("WORKFLOW_EXECUTED_V1");
   });
 
-  it("contains no randomness: repeated serialization is byte-identical", () => {
-    const a = JSON.stringify(executeWorkflow(MOCK_WORKFLOW_INSTRUCTIONS, INPUT));
-    const b = JSON.stringify(executeWorkflow(MOCK_WORKFLOW_INSTRUCTIONS, { ...INPUT }));
-    expect(a).toBe(b);
+  it("returns different instructions for different workflows", () => {
+    const other = buildExecutionContext(
+      { ...WORKFLOW, instructions: "Generate a finance tip." },
+      INPUT
+    );
+    expect(other.workflow.instructions).not.toBe(
+      buildExecutionContext(WORKFLOW, INPUT).workflow.instructions
+    );
+  });
+
+  it("satisfies the declared output schema", () => {
+    const context = buildExecutionContext(WORKFLOW, INPUT);
+    expect(WORKFLOW_OUTPUT_SCHEMA.safeParse(context).success).toBe(true);
   });
 });
 
-describe("expectedMockOutput", () => {
-  it("matches executeWorkflow with mock instructions", () => {
-    expect(expectedMockOutput(INPUT)).toEqual(executeWorkflow(MOCK_WORKFLOW_INSTRUCTIONS, INPUT));
+describe("createWorkflowToolHandler", () => {
+  it("returns content containing workflow instructions", () => {
+    const handler = createWorkflowToolHandler(WORKFLOW);
+    const result = handler(INPUT);
+    const text = result.content[0].text;
+    expect(text).toContain("WORKFLOW_EXECUTED_V1");
+    expect(text).toContain(MOCK_WORKFLOW_INSTRUCTIONS);
+  });
+
+  it("returns content containing actual input arguments", () => {
+    const handler = createWorkflowToolHandler(WORKFLOW);
+    const result = handler(INPUT);
+    const text = result.content[0].text;
+    expect(text).toContain("AI untuk UMKM");
+    expect(text).toContain("pemilik toko online");
+    expect(text).toContain("ramah");
+  });
+
+  it("returns structured content with workflow and input", () => {
+    const handler = createWorkflowToolHandler(WORKFLOW);
+    const result = handler(INPUT);
+    expect(result.structuredContent).toEqual(buildExecutionContext(WORKFLOW, INPUT));
+  });
+
+  it("does not contain hardcoded carousel output", () => {
+    const handler = createWorkflowToolHandler(WORKFLOW);
+    const result = handler(INPUT);
+    const text = result.content[0].text;
+    expect(text).not.toContain("Apa itu:");
+    expect(text).not.toContain("Langkah berikutnya");
+    expect(text).not.toContain("slides");
+    expect(result.structuredContent).not.toHaveProperty("title");
+    expect(result.structuredContent).not.toHaveProperty("slides");
   });
 });
 

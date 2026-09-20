@@ -6,15 +6,15 @@ POC ini hanya membuktikan satu hal:
 
 > Sebuah MCP server di Cloudflare Workers dapat menyediakan tool yang bisa didaftarkan ke ChatGPT.
 
-Belum ada integrasi DB, entitlement, pembayaran, atau pemanggilan model AI. Output tool bersifat **deterministik (mock)** — belum memakai LLM.
+Tool tidak menjalankan LLM sendiri. Output berupa **workflow execution context** (instruksi + input) yang dikembalikan ke ChatGPT agar model dapat mengeksekusi instruksi workflow. Ini adalah prompt-passthrough adapter, bukan production execution architecture.
 
 ## Tool saat ini
 
-`generate_instagram_carousel` — menghasilkan draf konten Instagram carousel (3 slide).
+`generate_instagram_carousel` — contoh tool yang berasal dari workflow published di DB.
 
-- Input: `topic`, `audience`, `tone` (semua string, wajib).
-- Output (structured): `{ title, slides: [{ slide, headline, body }] }`.
-- Deterministik: input sama → output selalu sama (tidak ada `Math.random`, `Date`, dsb).
+- Input: berasal dari `published_definition.input.fields` (misal `topic`, `audience`, `tone`).
+- Output (text): workflow name/description, `published_definition.instructions`, dan input arguments.
+- Output (structured): `{ workflow: { slug, name, description, instructions }, input }`.
 - Validasi input via zod; input tidak valid → hasil `isError: true` (bukan JSON-RPC error).
 
 ## Mengapa arsitektur ini
@@ -33,8 +33,8 @@ Belum ada integrasi DB, entitlement, pembayaran, atau pemanggilan model AI. Outp
 apps/mcp/
   src/index.ts                     entry Worker (fetch handler, stateless transport)
   src/server.ts                    createMcpServer() — registrasi tool
-  src/tools/instagram-carousel.ts  logika tool murni (deterministik, tanpa IO)
-  test/instagram-carousel.test.ts  unit test (determinisme, validasi, skema)
+  src/tools/workflow-tool.ts       logika tool generik (prompt-passthrough, tanpa IO)
+  test/workflow-tool.test.ts       unit test (execution context, validasi, skema)
   test/protocol.test.ts            test protokol via SDK client + raw Streamable HTTP
   wrangler.jsonc                   konfigurasi Worker
 ```
@@ -65,10 +65,12 @@ curl -s -X POST http://localhost:8799/mcp \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"generate_instagram_carousel","arguments":{"topic":"AI untuk UMKM","audience":"pemilik toko online","tone":"ramah"}}}'
 ```
 
+Respons `tools/call` akan mengandung instruksi workflow dan input arguments, bukan draf carousel jadi.
+
 ## Test
 
 ```bash
-pnpm --filter mcp test        # 21 test (unit + protokol)
+pnpm --filter mcp test        # (unit + protokol)
 pnpm --filter mcp lint        # tsc --noEmit
 pnpm --filter mcp build       # tsc + wrangler deploy --dry-run (verifikasi bundle)
 ```
@@ -106,8 +108,8 @@ Menurut dokumentasi ChatGPT MCP:
 3. Server tanpa OAuth (mode anonymous/read-only) diperbolehkan selama tool server
    berbasis server dan tidak menyentuh data pengguna atas nama mereka.
    Tool yang bertindak atas nama pengguna **wajib OAuth 2.1 (DCR/CIMD)** — bukan Bearer.
-4. Buka komposer, pilih MCP server (dynamic), panggil `generate_instagram_carousel`,
-   isi `topic`/`audience`/`tone`.
+4. Buka komposer, pilih MCP server (dynamic), panggil tool workflow yang tersedia,
+    isi input sesuai schema.
 
 Catatan literal dari hasil riset (bukan asumsi):
 - ChatGPT mendukung STDIO dan Streamable HTTP server.
@@ -119,7 +121,7 @@ Catatan literal dari hasil riset (bukan asumsi):
 ## Limitasi POC (sengaja)
 
 - Tidak ada DB, entitlement, usage tracking, atau logika bisnis.
-- Tool deterministik (mock) — bukan hasil LLM.
+- Tool prompt-passthrough: MCP mengembalikan instruksi + input ke ChatGPT; eksekusi sebenarnya dilakukan model di sana.
 - Tanpa OAuth/DCR → hanya cocok untuk mode anonymous/dev; produksi perlu OAuth.
 - Tanpa proteksi DNS-rebinding/origin di transport (default SDK, disabled
   untuk kemudahan dev; tambahkan middleware bila endpoint publik).

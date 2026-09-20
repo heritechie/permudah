@@ -6,7 +6,7 @@ import {
   createWorkflowToolHandler,
   toolNameFromWorkflowSlug,
   workflowSlugFromToolName,
-} from "./tools/instagram-carousel.js";
+} from "./tools/workflow-tool.js";
 
 export const SERVER_INFO = {
   name: "permudah-mcp",
@@ -102,7 +102,7 @@ export async function createMcpServer(env: Env): Promise<McpServer> {
   for (const workflow of workflows) {
     const toolName = toolNameFromWorkflowSlug(workflow.slug);
     const inputSchema = buildInputSchemaFromFields(workflow.inputFields);
-    const handler = createWorkflowToolHandler(workflow.instructions);
+    const handler = createWorkflowToolHandler(workflow);
 
     const descriptionParts = [workflow.name];
     if (workflow.description) {

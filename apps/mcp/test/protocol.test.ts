@@ -4,10 +4,9 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { workerHandler } from "../src/index.js";
 import { clearWorkflowCache } from "../src/server.js";
 import {
-  expectedMockOutput,
   MOCK_WORKFLOW_INSTRUCTIONS,
   toolNameFromWorkflowSlug,
-} from "../src/tools/instagram-carousel.js";
+} from "../src/tools/workflow-tool.js";
 
 const CAROUSEL_SLUG = "instagram-carousel";
 const CAROUSEL_TOOL = toolNameFromWorkflowSlug(CAROUSEL_SLUG);
@@ -167,14 +166,26 @@ describe("MCP protocol (official SDK client over HTTP)", () => {
     }
   });
 
-  it("calls the correct tool and returns deterministic structured content", async () => {
+  it("calls the correct tool and returns workflow instructions + input", async () => {
     const { client } = await newConnectedClient();
     try {
       const res = await client.callTool({
         name: CAROUSEL_TOOL,
         arguments: INPUT,
       });
-      expect(res.structuredContent).toEqual(expectedMockOutput(INPUT));
+      const content = res.content as Array<{ text?: string }>;
+      const text = content[0].text ?? "";
+      expect(text).toContain(MOCK_WORKFLOW_INSTRUCTIONS);
+      expect(text).toContain(INPUT.topic);
+      expect(text).toContain(INPUT.audience);
+      expect(text).toContain(INPUT.tone);
+      expect(res.structuredContent).toMatchObject({
+        workflow: {
+          slug: CAROUSEL_SLUG,
+          instructions: MOCK_WORKFLOW_INSTRUCTIONS,
+        },
+        input: INPUT,
+      });
     } finally {
       await client.close();
     }
@@ -253,13 +264,21 @@ describe("MCP protocol (raw Streamable HTTP over SSE)", () => {
     expect(names).toEqual([CAROUSEL_TOOL, toolNameFromWorkflowSlug("financial-tips")].sort());
   });
 
-  it("answers tools/call with the deterministic result", async () => {
+  it("answers tools/call with the workflow execution context", async () => {
     const response = await postRpc("tools/call", {
       name: CAROUSEL_TOOL,
       arguments: INPUT,
     });
-    const result = (response as { result: { structuredContent: unknown } }).result;
-    expect(result.structuredContent).toEqual(expectedMockOutput(INPUT));
+    const result = (response as { result: { content: Array<{ text: string }>; structuredContent: unknown } }).result;
+    expect(result.content[0].text).toContain(MOCK_WORKFLOW_INSTRUCTIONS);
+    expect(result.content[0].text).toContain(INPUT.topic);
+    expect(result.structuredContent).toMatchObject({
+      workflow: {
+        slug: CAROUSEL_SLUG,
+        instructions: MOCK_WORKFLOW_INSTRUCTIONS,
+      },
+      input: INPUT,
+    });
   });
 
   it("rejects invalid tool arguments with an isError result", async () => {
