@@ -7,7 +7,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type Status = "idle" | "submitting" | "sent" | "error";
 
-export function LoginForm() {
+export function LoginForm({ redirectTo }: { redirectTo?: string }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -26,10 +26,13 @@ export function LoginForm() {
 
     try {
       const supabase = createClient();
+      const callbackUrl = redirectTo
+        ? `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`
+        : `${window.location.origin}/auth/callback`;
       const { error } = await supabase.auth.signInWithOtp({
         email: value,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: callbackUrl,
         },
       });
       if (error) {

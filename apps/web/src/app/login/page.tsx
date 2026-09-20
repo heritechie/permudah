@@ -3,7 +3,7 @@ import Image from "next/image";
 import { LoginForm } from "@/components/login-form";
 
 type LoginPageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; redirect?: string }>;
 };
 
 export const metadata: Metadata = {
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const { error } = await searchParams;
+  const { error, redirect: redirectTo } = await searchParams;
 
   return (
     <main className="flex flex-1 items-center justify-center px-6 py-16">
@@ -37,12 +37,16 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             role="alert"
             className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
           >
-            Unable to sign in. Please try again.
+            {error === "missing_authorization"
+              ? "Missing authorization request."
+              : error === "invalid_authorization"
+                ? "Invalid or expired authorization request."
+                : "Unable to sign in. Please try again."}
           </p>
         ) : null}
 
         <div className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <LoginForm />
+          <LoginForm redirectTo={redirectTo} />
         </div>
 
         <p className="mt-6 text-center text-sm text-zinc-500">
