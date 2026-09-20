@@ -10,13 +10,17 @@ import {
   resolveLocale,
 } from "@/i18n/dictionary";
 import { hostnameFromHeaders } from "@/lib/hostname";
+import { getCreatorBySlug } from "@/lib/creators";
 
 export default async function Home() {
   const [cookieStore, headersList] = await Promise.all([cookies(), headers()]);
   const hostInfo = hostnameFromHeaders(headersList);
 
   if (hostInfo.kind === "creator") {
-    return <StorefrontPlaceholder name={hostInfo.displayName} />;
+    const creator = await getCreatorBySlug(hostInfo.slug);
+    return (
+      <StorefrontPlaceholder name={creator?.display_name ?? hostInfo.displayName} />
+    );
   }
 
   const hero = getDictionary(
