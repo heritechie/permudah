@@ -19,7 +19,11 @@ export default async function Home() {
   if (hostInfo.kind === "creator") {
     const creator = await getCreatorBySlug(hostInfo.slug);
     return (
-      <StorefrontPlaceholder name={creator?.display_name ?? hostInfo.displayName} />
+      <StorefrontPlaceholder
+        name={creator?.display_name ?? hostInfo.displayName}
+        bio={creator?.bio ?? null}
+        registered={Boolean(creator)}
+      />
     );
   }
 

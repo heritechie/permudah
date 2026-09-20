@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated build output and caches:
+    "dist/**",
+    ".vinext/**",
+    ".turbo/**",
+    "tsconfig.tsbuildinfo",
   ]),
 ]);
 

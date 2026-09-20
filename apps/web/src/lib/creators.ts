@@ -33,3 +33,20 @@ export async function getCreatorForHostname(
   if (hostInfo.kind !== "creator") return null;
   return getCreatorBySlug(hostInfo.slug);
 }
+
+export async function getCreatorByUserId(
+  userId: string,
+): Promise<StorefrontCreator | null> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("creator_storefronts")
+      .select("id, slug, display_name, bio, avatar_url")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}

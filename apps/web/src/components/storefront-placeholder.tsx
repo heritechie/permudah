@@ -1,8 +1,18 @@
 import Image from "next/image";
 
-export function StorefrontPlaceholder({ name }: { name: string }) {
+type StorefrontPlaceholderProps = {
+  name: string;
+  bio?: string | null;
+  registered?: boolean;
+};
+
+export function StorefrontPlaceholder({
+  name,
+  bio,
+  registered = false,
+}: StorefrontPlaceholderProps) {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+    <main className="flex flex-1 flex-col items-center px-6 py-16 text-center">
       <Image
         src="/images/permudah-logo.png"
         alt="Permudah"
@@ -16,7 +26,24 @@ export function StorefrontPlaceholder({ name }: { name: string }) {
       <p className="mt-3 text-xs font-semibold uppercase tracking-[0.25em] text-blue-600">
         Creator storefront
       </p>
-      <p className="mt-3 text-lg text-zinc-500">Coming soon.</p>
+
+      {registered ? (
+        <>
+          {bio ? (
+            <p className="mt-4 max-w-xl text-pretty text-lg text-zinc-600">
+              {bio}
+            </p>
+          ) : null}
+          <div className="mt-10 w-full max-w-xl rounded-xl border border-dashed border-slate-300 bg-white px-6 py-8">
+            <p className="text-sm font-medium text-slate-700">Workflows</p>
+            <p className="mt-1 text-sm text-zinc-500">
+              No workflows published yet.
+            </p>
+          </div>
+        </>
+      ) : (
+        <p className="mt-3 text-lg text-zinc-500">Coming soon.</p>
+      )}
     </main>
   );
 }

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "dev:vinext": "vinext dev --port 3001",
     "build:vinext": "vinext build",
     "start:vinext": "wrangler dev --config dist/server/wrangler.json",
@@ -35,6 +36,7 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "^8.3.0",
+    "vitest": "^5.0.1",
     "wrangler": "^4.135.0"
   },
   "packageManager": "pnpm@10.12.1",

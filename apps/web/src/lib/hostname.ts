@@ -1,21 +1,8 @@
+import { APP_ROOT_DOMAIN, CREATOR_SLUG_PATTERN, RESERVED_CREATOR_SLUGS } from "./slug";
+
 export type HostInfo =
   | { kind: "root" }
   | { kind: "creator"; slug: string; displayName: string };
-
-const PRODUCTION_ROOT_DOMAIN = "permudah.com";
-
-const RESERVED_SUBDOMAINS = new Set([
-  "www",
-  "app",
-  "api",
-  "admin",
-  "auth",
-  "help",
-  "support",
-  "docs",
-]);
-
-const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 export function displayNameForSlug(slug: string): string {
   return slug
@@ -27,15 +14,15 @@ export function displayNameForSlug(slug: string): string {
 
 function classifyHostname(hostname: string): HostInfo {
   if (
-    hostname === PRODUCTION_ROOT_DOMAIN ||
-    hostname === `www.${PRODUCTION_ROOT_DOMAIN}`
+    hostname === APP_ROOT_DOMAIN ||
+    hostname === `www.${APP_ROOT_DOMAIN}`
   ) {
     return { kind: "root" };
   }
 
-  if (hostname.endsWith(`.${PRODUCTION_ROOT_DOMAIN}`)) {
-    const slug = hostname.slice(0, -(PRODUCTION_ROOT_DOMAIN.length + 1));
-    if (SLUG_PATTERN.test(slug) && !RESERVED_SUBDOMAINS.has(slug)) {
+  if (hostname.endsWith(`.${APP_ROOT_DOMAIN}`)) {
+    const slug = hostname.slice(0, -(APP_ROOT_DOMAIN.length + 1));
+    if (CREATOR_SLUG_PATTERN.test(slug) && !RESERVED_CREATOR_SLUGS.has(slug)) {
       return { kind: "creator", slug, displayName: displayNameForSlug(slug) };
     }
     return { kind: "root" };
@@ -43,7 +30,7 @@ function classifyHostname(hostname: string): HostInfo {
 
   if (hostname.endsWith(".localhost")) {
     const slug = hostname.slice(0, -".localhost".length);
-    if (SLUG_PATTERN.test(slug)) {
+    if (CREATOR_SLUG_PATTERN.test(slug)) {
       return { kind: "creator", slug, displayName: displayNameForSlug(slug) };
     }
   }
