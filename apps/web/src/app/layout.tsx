@@ -1,5 +1,11 @@
 import type { Metadata } from "next";
+import { cookies, headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
+import {
+  getDictionary,
+  localeCookieName,
+  resolveLocale,
+} from "@/i18n/dictionary";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,15 +18,39 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Permudah",
-  description: "AI Workflow Commerce Platform",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const [cookieStore, headersList] = await Promise.all([cookies(), headers()]);
+  const dictionary = getDictionary(
+    resolveLocale(
+      cookieStore.get(localeCookieName)?.value,
+      headersList.get("accept-language"),
+    ),
+  );
+  return {
+    title: dictionary.meta.title,
+    description: dictionary.meta.description,
+    icons: {
+      icon: "/images/permudah-app-icon-512.png",
+      apple: "/images/permudah-app-icon-512.png",
+    },
+    openGraph: {
+      title: dictionary.meta.title,
+      description: dictionary.meta.description,
+      images: ["/images/permudah-og-image.png"],
+    },
+  };
+}
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const [cookieStore, headersList] = await Promise.all([cookies(), headers()]);
+  const locale = resolveLocale(
+    cookieStore.get(localeCookieName)?.value,
+    headersList.get("accept-language"),
+  );
+
   return (
     <html
-      lang="id"
+      lang={locale}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
