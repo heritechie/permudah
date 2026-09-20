@@ -1,0 +1,80 @@
+export type HostInfo =
+  | { kind: "root" }
+  | { kind: "creator"; slug: string; displayName: string };
+
+const PRODUCTION_ROOT_DOMAIN = "permudah.com";
+
+const RESERVED_SUBDOMAINS = new Set([
+  "www",
+  "app",
+  "api",
+  "admin",
+  "auth",
+  "help",
+  "support",
+  "docs",
+]);
+
+const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+export function displayNameForSlug(slug: string): string {
+  return slug
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function classifyHostname(hostname: string): HostInfo {
+  if (
+    hostname === PRODUCTION_ROOT_DOMAIN ||
+    hostname === `www.${PRODUCTION_ROOT_DOMAIN}`
+  ) {
+    return { kind: "root" };
+  }
+
+  if (hostname.endsWith(`.${PRODUCTION_ROOT_DOMAIN}`)) {
+    const slug = hostname.slice(0, -(PRODUCTION_ROOT_DOMAIN.length + 1));
+    if (SLUG_PATTERN.test(slug) && !RESERVED_SUBDOMAINS.has(slug)) {
+      return { kind: "creator", slug, displayName: displayNameForSlug(slug) };
+    }
+    return { kind: "root" };
+  }
+
+  if (hostname.endsWith(".localhost")) {
+    const slug = hostname.slice(0, -".localhost".length);
+    if (SLUG_PATTERN.test(slug)) {
+      return { kind: "creator", slug, displayName: displayNameForSlug(slug) };
+    }
+  }
+
+  return { kind: "root" };
+}
+
+export function parseHostname(host: string | null | undefined): HostInfo {
+  if (!host) return { kind: "root" };
+  let value = host.trim().toLowerCase();
+
+  const ipv6 = value.match(/^\[([^\]]+)\]/);
+  if (ipv6) {
+    value = ipv6[1];
+  } else {
+    value = value.split(":")[0];
+  }
+
+  value = value.replace(/\.$/, "");
+
+  if (value === "localhost" || value === "127.0.0.1" || value === "::1") {
+    return { kind: "root" };
+  }
+
+  return classifyHostname(value);
+}
+
+export function hostnameFromHeaders(headers: {
+  get(name: string): string | null;
+}): HostInfo {
+  const forwarded = headers.get("x-forwarded-host");
+  const host = headers.get("host");
+  return parseHostname(forwarded ?? host);
+}

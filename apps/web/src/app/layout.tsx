@@ -6,6 +6,7 @@ import {
   localeCookieName,
   resolveLocale,
 } from "@/i18n/dictionary";
+import { hostnameFromHeaders } from "@/lib/hostname";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,8 +27,11 @@ export async function generateMetadata(): Promise<Metadata> {
       headersList.get("accept-language"),
     ),
   );
+  const hostInfo = hostnameFromHeaders(headersList);
+  const creatorTitle =
+    hostInfo.kind === "creator" ? `${hostInfo.displayName} — Permudah` : null;
   return {
-    title: dictionary.meta.title,
+    title: creatorTitle ?? dictionary.meta.title,
     description: dictionary.meta.description,
     icons: {
       icon: "/images/permudah-app-icon-512.png",

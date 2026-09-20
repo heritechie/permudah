@@ -3,14 +3,22 @@ import Image from "next/image";
 import { EarlyAccessForm } from "@/components/early-access-form";
 import { Header } from "@/components/header";
 import { ProductFlow } from "@/components/product-flow";
+import { StorefrontPlaceholder } from "@/components/storefront-placeholder";
 import {
   getDictionary,
   localeCookieName,
   resolveLocale,
 } from "@/i18n/dictionary";
+import { hostnameFromHeaders } from "@/lib/hostname";
 
 export default async function Home() {
   const [cookieStore, headersList] = await Promise.all([cookies(), headers()]);
+  const hostInfo = hostnameFromHeaders(headersList);
+
+  if (hostInfo.kind === "creator") {
+    return <StorefrontPlaceholder name={hostInfo.displayName} />;
+  }
+
   const hero = getDictionary(
     resolveLocale(
       cookieStore.get(localeCookieName)?.value,
