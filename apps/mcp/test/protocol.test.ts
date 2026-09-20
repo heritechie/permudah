@@ -54,9 +54,30 @@ const TIPS_WORKFLOW = {
 
 let mockWorkflows = [CAROUSEL_WORKFLOW, TIPS_WORKFLOW];
 let fromCalls: string[] = [];
+let tokenClaimsResult: { data: unknown | null; error: unknown | null } = {
+  data: {
+    claims: {
+      iss: "https://test.supabase.co/auth/v1",
+      aud: "authenticated",
+      sub: "user-1",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    },
+  },
+  error: null,
+};
 
-vi.mock("@supabase/supabase-js", () => ({
-  createClient: vi.fn(() => ({
+const VALID_ACCESS_TOKEN = "valid-test-token";
+
+function fakeSupabaseClient() {
+  return {
+    auth: {
+      getClaims: vi.fn(async (_jwt: string) => {
+        if (_jwt === VALID_ACCESS_TOKEN) {
+          return tokenClaimsResult;
+        }
+        return { data: null, error: { message: "Invalid token" } };
+      }),
+    },
     from: vi.fn((table: string) => {
       fromCalls.push(table);
       return {
@@ -66,7 +87,11 @@ vi.mock("@supabase/supabase-js", () => ({
         })),
       };
     }),
-  })),
+  };
+}
+
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: vi.fn(() => fakeSupabaseClient()),
 }));
 
 const MCP_URL = new URL("https://mcp.local/mcp");
@@ -105,7 +130,13 @@ afterEach(() => {
 
 async function newConnectedClient() {
   const client = new Client({ name: "protocol-test-client", version: "0.1.0" });
-  const transport = new StreamableHTTPClientTransport(MCP_URL);
+  const transport = new StreamableHTTPClientTransport(MCP_URL, {
+    requestInit: {
+      headers: {
+        Authorization: `Bearer ${VALID_ACCESS_TOKEN}`,
+      },
+    },
+  });
   await client.connect(transport);
   return { client, transport };
 }
@@ -230,13 +261,17 @@ function parseSSEData(body: ReadableStream<Uint8Array>): Promise<unknown[]> {
   });
 }
 
-async function postRpc(method: string, params: unknown) {
+async function postRpc(method: string, params: unknown, token = VALID_ACCESS_TOKEN) {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   const req = new Request(MCP_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-    },
+    headers,
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
@@ -325,5 +360,64 @@ describe("MCP protocol (raw Streamable HTTP over SSE)", () => {
     const res = await workerHandler.fetch(req, TEST_ENV);
     expect(res.status).toBe(204);
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+
+  it("returns 401 without Authorization header", async () => {
+    const req = new Request(MCP_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "raw-test", version: "0.1.0" } },
+      }),
+    });
+    const res = await workerHandler.fetch(req, TEST_ENV);
+    expect(res.status).toBe(401);
+    const wwwAuth = res.headers.get("WWW-Authenticate");
+    expect(wwwAuth).toContain("Bearer");
+    expect(wwwAuth).toContain("https://test.supabase.co/auth/v1");
+  });
+
+  it("returns 401 with malformed Authorization header", async () => {
+    const req = new Request(MCP_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        Authorization: "Basic invalid",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "raw-test", version: "0.1.0" } },
+      }),
+    });
+    const res = await workerHandler.fetch(req, TEST_ENV);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 401 with invalid token", async () => {
+    const req = new Request(MCP_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        Authorization: "Bearer invalid-token",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "raw-test", version: "0.1.0" } },
+      }),
+    });
+    const res = await workerHandler.fetch(req, TEST_ENV);
+    expect(res.status).toBe(401);
   });
 });

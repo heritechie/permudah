@@ -27,6 +27,26 @@ const client = new Client({ name: "verify-production", version: "0.1.0" });
 const transport = new StreamableHTTPClientTransport(url);
 
 try {
+  // Verify unauthenticated requests are rejected with 401 + OAuth metadata.
+  const unauthRes = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "verify", version: "0.1.0" } },
+    }),
+  });
+  record(
+    "unauthenticated /mcp",
+    unauthRes.status === 401,
+    `status=${unauthRes.status}, www-authenticate=${unauthRes.headers.get("WWW-Authenticate")?.slice(0, 80)}`
+  );
+
   await client.connect(transport);
   record("initialize/connect", true, "SDK Client terhubung via Streamable HTTP");
 
