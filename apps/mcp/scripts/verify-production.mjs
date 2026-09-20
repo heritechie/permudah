@@ -43,12 +43,13 @@ try {
 
   const res = await client.callTool({ name: "generate_instagram_carousel", arguments: INPUT });
   const text = res.content?.[0]?.text ?? "";
-  const hasInstructions = text.includes("WORKFLOW_EXECUTED_V1");
+  const instructions = res.structuredContent?.workflow?.instructions ?? "";
+  const hasInstructions = instructions.length > 0 && text.includes(instructions);
   const hasInput = text.includes(INPUT.topic) && text.includes(INPUT.audience);
   record(
     "tools/call (valid)",
     Boolean(hasInstructions && hasInput),
-    `instructionsPresent=${hasInstructions}, inputPresent=${hasInput}`
+    `instructionsPresent=${hasInstructions}, inputPresent=${hasInput}, instructionsLength=${instructions.length}`
   );
 
   const bad = await client.callTool({
