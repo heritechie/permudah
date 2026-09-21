@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  DEFAULT_CREATOR_TYPE,
+  type CreatorType,
+} from "@/lib/creator-type";
 
 export type CreateCreatorInput = {
   display_name: string;
@@ -14,6 +18,7 @@ export type CreateCreatorResult =
         slug: string;
         display_name: string;
         bio: string | null;
+        type: CreatorType;
       };
     }
   | { ok: false; reason: "unauthorized" | "taken" | "error"; message?: string };
@@ -36,8 +41,9 @@ export async function createCreatorWithClient(
       slug: input.slug,
       display_name: input.display_name,
       bio: input.bio ?? null,
+      type: DEFAULT_CREATOR_TYPE,
     })
-    .select("id, slug, display_name, bio")
+    .select("id, slug, display_name, bio, type")
     .single();
 
   if (error) {

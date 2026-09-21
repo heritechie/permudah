@@ -1,5 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
 import { parseHostname } from "@/lib/hostname";
+import type { CreatorType } from "@/lib/creator-type";
+
+export type {
+  CreatorType,
+} from "@/lib/creator-type";
+export {
+  CREATOR_TYPES,
+  DEFAULT_CREATOR_TYPE,
+  isCreatorType,
+  PLATFORM_PUBLISHER,
+} from "@/lib/creator-type";
 
 export type StorefrontCreator = {
   id: string;
@@ -7,6 +18,7 @@ export type StorefrontCreator = {
   display_name: string;
   bio: string | null;
   avatar_url: string | null;
+  type: CreatorType;
 };
 
 export async function getCreatorBySlug(
@@ -16,7 +28,7 @@ export async function getCreatorBySlug(
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("creator_storefronts")
-      .select("id, slug, display_name, bio, avatar_url")
+      .select("id, slug, display_name, bio, avatar_url, type")
       .eq("slug", slug)
       .maybeSingle();
     if (error) return null;
@@ -41,7 +53,7 @@ export async function getCreatorByUserId(
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("creator_storefronts")
-      .select("id, slug, display_name, bio, avatar_url")
+      .select("id, slug, display_name, bio, avatar_url, type")
       .eq("id", userId)
       .maybeSingle();
     if (error) return null;

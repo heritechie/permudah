@@ -68,6 +68,11 @@ let tokenClaimsResult: { data: unknown | null; error: unknown | null } = {
 
 const VALID_ACCESS_TOKEN = "valid-test-token";
 
+// Deterministic Permudah Official publisher id (see apps/web migration
+// 20260922000000_platform_publisher.sql). MCP must treat platform-owned
+// workflows exactly like creator-owned ones.
+const PLATFORM_PUBLISHER_ID = "b2da1210-548d-5ff1-9245-ae91d73a357b";
+
 function fakeSupabaseClient() {
   return {
     auth: {
@@ -142,6 +147,31 @@ async function newConnectedClient() {
 }
 
 describe("MCP protocol (official SDK client over HTTP)", () => {
+  it("discovers and executes a platform-owned published workflow", async () => {
+    mockWorkflows = [
+      {
+        ...TIPS_WORKFLOW,
+        creator_id: PLATFORM_PUBLISHER_ID,
+      },
+    ];
+    const { client } = await newConnectedClient();
+    try {
+      const tools = await client.listTools();
+      const platformTool = tools.tools.find(
+        (t) => t.name === toolNameFromWorkflowSlug("financial-tips"),
+      );
+      expect(platformTool).toBeDefined();
+
+      const res = await client.callTool({
+        name: toolNameFromWorkflowSlug("financial-tips"),
+        arguments: { topic: "saham", audience: "pemula" },
+      });
+      expect(JSON.stringify(res.content)).toContain("personal finance tip");
+    } finally {
+      await client.close();
+    }
+  });
+
   it("reads published workflows from public_workflows view", async () => {
     const { client } = await newConnectedClient();
     try {

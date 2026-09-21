@@ -9,6 +9,7 @@ const CREATOR = {
   display_name: "Master Digital",
   bio: null,
   avatar_url: null,
+  type: "creator" as const,
 };
 
 describe("decideDashboardGate", () => {

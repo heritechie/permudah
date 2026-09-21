@@ -7,6 +7,7 @@ type MockCreator = {
   slug: string;
   display_name: string;
   bio: string | null;
+  type: "creator" | "platform";
 };
 
 function fakeClient(options: {
@@ -47,6 +48,7 @@ describe("createCreatorWithClient", () => {
         slug: "masterdigital",
         display_name: "Master Digital",
         bio: null,
+        type: "creator",
       },
     });
 
@@ -62,10 +64,36 @@ describe("createCreatorWithClient", () => {
         slug: "masterdigital",
         display_name: "Master Digital",
         bio: null,
+        type: "creator",
       },
     });
     expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toMatchObject({ id: USER.id, slug: "masterdigital" });
+    expect(inserted[0]).toMatchObject({
+      id: USER.id,
+      slug: "masterdigital",
+      type: "creator",
+    });
+  });
+
+  test("always inserts the default creator type, never platform", async () => {
+    const { client, inserted } = fakeClient({
+      user: USER,
+      data: {
+        id: USER.id,
+        slug: "masterdigital",
+        display_name: "Master Digital",
+        bio: null,
+        type: "creator",
+      },
+    });
+
+    await createCreatorWithClient(client, {
+      display_name: "Master Digital",
+      slug: "masterdigital",
+    });
+
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toMatchObject({ type: "creator" });
   });
 
   test("rejects when there is no authenticated user", async () => {

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, test } from "vitest";
+import { PLATFORM_PUBLISHER } from "@/lib/creators";
 import {
   createWorkflow,
   findUniqueWorkflowSlug,
@@ -592,5 +593,49 @@ describe("findUniqueWorkflowSlug", () => {
 
     const selectCall = calls.find((call) => call.op === "select");
     expect(selectCall?.filters).toContainEqual(["creator_id", CREATOR_A]);
+  });
+});
+
+describe("platform publisher workflows", () => {
+  test("platform creator can own a workflow", async () => {
+    const { client, store } = fakeClient({});
+
+    const result = await createWorkflow(client, {
+      creator_id: PLATFORM_PUBLISHER.id,
+      name: "Instagram Carousel",
+      description: null,
+      instructions: "Write a caption.",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.creator_id).toBe(PLATFORM_PUBLISHER.id);
+    expect(result.data.status).toBe("draft");
+    expect(store.workflows[0]?.creator_id).toBe(PLATFORM_PUBLISHER.id);
+  });
+
+  test("platform-owned published workflow is compatible with public discovery", async () => {
+    const { client, store } = fakeClient({});
+    store.publicWorkflows.push({
+      id: "wf-platform",
+      creator_id: PLATFORM_PUBLISHER.id,
+      slug: "instagram-carousel",
+      name: "Instagram Carousel",
+      description: null,
+      published_at: "2026-09-20T00:00:00.000Z",
+    });
+
+    const found = await getPublishedWorkflow(
+      client,
+      PLATFORM_PUBLISHER.id,
+      "instagram-carousel",
+    );
+    expect(found?.id).toBe("wf-platform");
+
+    const workflows = await getPublishedWorkflowsForCreator(
+      client,
+      PLATFORM_PUBLISHER.id,
+    );
+    expect(workflows.map((wf) => wf.slug)).toEqual(["instagram-carousel"]);
   });
 });

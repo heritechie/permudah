@@ -9,6 +9,7 @@ export const RESERVED_CREATOR_SLUGS = new Set([
   "help",
   "support",
   "docs",
+  "permudah",
 ]);
 
 export const CREATOR_SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
