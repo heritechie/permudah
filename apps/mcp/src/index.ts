@@ -3,7 +3,9 @@ import { createMcpServer } from "./server.js";
 import {
   authenticateRequest,
   buildProtectedResourceMetadata,
+  createProtectedResourceMetadataResponse,
   createUnauthorizedResponse,
+  getProtectedResourceMetadataUrl,
 } from "./auth.js";
 
 interface Env {
@@ -43,15 +45,24 @@ export const workerHandler = {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
+    const requestUrl = new URL(request.url);
+
+    // OAuth 2.0 protected resource metadata discovery (RFC 9728).
+    if (request.method === "GET" && requestUrl.pathname === "/.well-known/oauth-protected-resource") {
+      const metadata = buildProtectedResourceMetadata(requestUrl, env);
+      return withCors(createProtectedResourceMetadataResponse(metadata));
+    }
+
     if (request.method !== "POST") {
       return new Response(null, { status: 405, headers: CORS_HEADERS });
     }
 
-    const metadata = buildProtectedResourceMetadata(new URL(request.url), env);
+    const metadata = buildProtectedResourceMetadata(requestUrl, env);
+    const resourceMetadataUrl = getProtectedResourceMetadataUrl(requestUrl);
 
     const authResult = await authenticateRequest(request, env);
     if (!authResult) {
-      return withCors(createUnauthorizedResponse(metadata));
+      return withCors(createUnauthorizedResponse(metadata, resourceMetadataUrl.toString()));
     }
 
     // Create server and load workflow for this request

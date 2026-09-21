@@ -89,16 +89,43 @@ describe("MCP OAuth authentication", () => {
     };
   });
 
-  test("unauthenticated request returns 401 with OAuth metadata", async () => {
+  test("unauthenticated request returns 401 with OAuth metadata pointing to well-known endpoint", async () => {
     const res = await workerHandler.fetch(makeRequest(), TEST_ENV);
     expect(res.status).toBe(401);
 
     const wwwAuth = res.headers.get("WWW-Authenticate");
     expect(wwwAuth).toContain("Bearer");
     expect(wwwAuth).toContain("https://test.supabase.co/auth/v1");
+    expect(wwwAuth).toContain("https://mcp.local/.well-known/oauth-protected-resource");
 
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("unauthorized");
+  });
+
+  test("GET /.well-known/oauth-protected-resource returns metadata JSON", async () => {
+    const req = new Request("https://mcp.local/.well-known/oauth-protected-resource", {
+      method: "GET",
+    });
+    const res = await workerHandler.fetch(req, TEST_ENV);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("application/json");
+
+    const metadata = (await res.json()) as {
+      resource?: string;
+      authorization_servers?: string[];
+      scopes_supported?: string[];
+      bearer_methods_supported?: string[];
+    };
+    expect(metadata.resource).toBe("https://mcp.local/mcp");
+    expect(metadata.authorization_servers).toEqual(["https://test.supabase.co/auth/v1"]);
+    expect(metadata.scopes_supported).toContain("openid");
+    expect(metadata.bearer_methods_supported).toContain("header");
+  });
+
+  test("GET /mcp remains 405", async () => {
+    const req = new Request("https://mcp.local/mcp", { method: "GET" });
+    const res = await workerHandler.fetch(req, TEST_ENV);
+    expect(res.status).toBe(405);
   });
 
   test("valid token allows request", async () => {

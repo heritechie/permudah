@@ -30,6 +30,29 @@ export function getSupabaseAuthServerUrl(supabaseUrl: string): string {
 }
 
 /**
+ * Build the URL for the OAuth protected resource metadata endpoint.
+ */
+export function getProtectedResourceMetadataUrl(requestUrl: URL): URL {
+  const metadataUrl = new URL(requestUrl);
+  metadataUrl.pathname = "/.well-known/oauth-protected-resource";
+  metadataUrl.search = "";
+  metadataUrl.hash = "";
+  return metadataUrl;
+}
+
+/**
+ * Derive the MCP resource URL from any request URL.
+ * The resource identifier is always the MCP endpoint root (/mcp).
+ */
+export function getMcpResourceUrl(requestUrl: URL): URL {
+  const resourceUrl = new URL(requestUrl);
+  resourceUrl.pathname = "/mcp";
+  resourceUrl.search = "";
+  resourceUrl.hash = "";
+  return resourceUrl;
+}
+
+/**
  * Build RFC 9728 OAuth protected resource metadata for the MCP endpoint.
  */
 export function buildProtectedResourceMetadata(
@@ -37,8 +60,9 @@ export function buildProtectedResourceMetadata(
   env: Env,
 ): OAuthProtectedResourceMetadata {
   const authServerUrl = getSupabaseAuthServerUrl(env.SUPABASE_URL);
+  const resourceUrl = getMcpResourceUrl(requestUrl);
   return {
-    resource: requestUrl.toString(),
+    resource: resourceUrl.toString(),
     authorization_servers: [authServerUrl],
     jwks_uri: `${authServerUrl}/.well-known/jwks.json`,
     scopes_supported: ["openid", "profile", "email"],
@@ -54,13 +78,14 @@ export function buildProtectedResourceMetadata(
  */
 export function formatWwwAuthenticateHeader(
   metadata: OAuthProtectedResourceMetadata,
+  resourceMetadataUrl: string,
 ): string {
   const asUrls = metadata.authorization_servers ?? [];
   const parts = [`Bearer realm="Permudah MCP"`];
   if (asUrls.length > 0) {
     parts.push(`authorization_server="${asUrls[0]}"`);
   }
-  parts.push(`resource_metadata="${metadata.resource}"`);
+  parts.push(`resource_metadata="${resourceMetadataUrl}"`);
   return parts.join(", ");
 }
 
@@ -69,6 +94,7 @@ export function formatWwwAuthenticateHeader(
  */
 export function createUnauthorizedResponse(
   metadata: OAuthProtectedResourceMetadata,
+  resourceMetadataUrl: string,
 ): Response {
   return new Response(
     JSON.stringify({ error: "unauthorized", error_description: "Authentication required" }),
@@ -76,10 +102,24 @@ export function createUnauthorizedResponse(
       status: 401,
       headers: {
         "Content-Type": "application/json",
-        "WWW-Authenticate": formatWwwAuthenticateHeader(metadata),
+        "WWW-Authenticate": formatWwwAuthenticateHeader(metadata, resourceMetadataUrl),
       },
     },
   );
+}
+
+/**
+ * Create a 200 OK response with OAuth protected resource metadata.
+ */
+export function createProtectedResourceMetadataResponse(
+  metadata: OAuthProtectedResourceMetadata,
+): Response {
+  return new Response(JSON.stringify(metadata), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
 }
 
 /**

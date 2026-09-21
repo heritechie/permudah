@@ -381,6 +381,7 @@ describe("MCP protocol (raw Streamable HTTP over SSE)", () => {
     const wwwAuth = res.headers.get("WWW-Authenticate");
     expect(wwwAuth).toContain("Bearer");
     expect(wwwAuth).toContain("https://test.supabase.co/auth/v1");
+    expect(wwwAuth).toContain("https://mcp.local/.well-known/oauth-protected-resource");
   });
 
   it("returns 401 with malformed Authorization header", async () => {
