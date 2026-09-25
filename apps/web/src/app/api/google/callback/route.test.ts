@@ -563,7 +563,7 @@ describe("GET /api/google/callback", () => {
     expect(location).not.toContain("script.google.com");
   });
 
-  test("surfaces service_disabled with the Google Cloud project and a support reference", async () => {
+  test("keeps the Google Cloud project number out of the error redirect", async () => {
     setEnv(FULL_ENV);
     const store = happyFlow(await transactionCookie());
     vi.mocked(createUserOwnedWebApp).mockResolvedValue({
@@ -579,14 +579,40 @@ describe("GET /api/google/callback", () => {
     const location = new URL(response.headers.get("location")!);
     expect(location.pathname).toBe("/google");
     expect(location.searchParams.get("error")).toBe("service_disabled");
-    expect(location.searchParams.get("project")).toBe("887739439651");
     expect(location.searchParams.get("ref")).toBe("corr-service");
-    // The raw Google message never reaches the URL.
-    expect(response.headers.get("location")).not.toContain("has not been used");
+
+    // Permudah's own project number stays server-side, for the operator log
+    // keyed by the same correlation id. It never reaches the browser.
+    expect(location.searchParams.has("project")).toBe(false);
+    const href = response.headers.get("location")!;
+    expect(href).not.toContain("887739439651");
+    expect(href).not.toContain("project");
+    // The raw Google message never reaches the URL either.
+    expect(href).not.toContain("has not been used");
     expect(store.map.has(RESULT_COOKIE)).toBe(false);
   });
 
-  test("omits the project parameter when Google did not name a project", async () => {
+  test("ties the user's reference to a log line and sends no project detail", async () => {
+    setEnv(FULL_ENV);
+    happyFlow(await transactionCookie());
+    vi.mocked(createUserOwnedWebApp).mockResolvedValue({
+      ok: false,
+      reason: "service_disabled",
+      message: "Google Apps Script API has not been used in project 887739439651 before or it is disabled.",
+      correlationId: "corr-service-log",
+      googleProjectNumber: "887739439651",
+    });
+
+    const response = await GET(new Request(`${baseUrl}?code=code-1&state=state-good`));
+
+    // The correlation id is the only thing the user gets, and it is the key an
+    // operator uses to find the sanitized log line holding the project number.
+    const location = new URL(response.headers.get("location")!);
+    expect(location.searchParams.get("ref")).toBe("corr-service-log");
+    expect(response.headers.get("location")).not.toContain("887739439651");
+  });
+
+  test("sends exactly error and ref on a provisioning failure redirect", async () => {
     setEnv(FULL_ENV);
     happyFlow(await transactionCookie());
     vi.mocked(createUserOwnedWebApp).mockResolvedValue({
@@ -600,8 +626,9 @@ describe("GET /api/google/callback", () => {
     const response = await GET(new Request(`${baseUrl}?code=code-1&state=state-good`));
 
     const location = new URL(response.headers.get("location")!);
+    expect([...location.searchParams.keys()].sort()).toEqual(["error", "ref"]);
     expect(location.searchParams.get("error")).toBe("service_disabled");
-    expect(location.searchParams.has("project")).toBe(false);
+    expect(location.searchParams.get("ref")).toBe("corr-service-2");
   });
 
   test("forwards apps_script_access_required as its own reason", async () => {

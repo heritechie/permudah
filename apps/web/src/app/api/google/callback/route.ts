@@ -74,8 +74,14 @@ export async function GET(request: Request) {
 
   /**
    * Failure redirect for a provisioning attempt. `ref` is this request's
-   * correlation id so a user can quote it in support. `project` is a Google
-   * Cloud project number (digits only) and is only added when Google named one.
+   * correlation id so a user can quote it in support, and it is the only
+   * identifier that crosses into the browser.
+   *
+   * Permudah's own Google Cloud project number is deliberately NOT sent to the
+   * browser. It stays in the sanitized server log next to the same correlation
+   * id, which is where an operator actually needs it. The user cannot act on it
+   * — a Cloud-project fault is ours to fix — so putting it in a URL the user can
+   * read and share only exposes our project layout.
    */
   function redirectProvisioningFailure(failure: {
     reason: string;
@@ -84,9 +90,6 @@ export async function GET(request: Request) {
   }): NextResponse {
     const target = new URL(`/google?error=${encodeURIComponent(failure.reason)}`, origin);
     target.searchParams.set("ref", failure.correlationId);
-    if (failure.googleProjectNumber) {
-      target.searchParams.set("project", failure.googleProjectNumber);
-    }
     return NextResponse.redirect(target);
   }
 

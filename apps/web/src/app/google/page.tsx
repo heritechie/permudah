@@ -8,7 +8,12 @@ export const metadata: Metadata = {
 };
 
 type GooglePageProps = {
-  searchParams: Promise<{ error?: string; ref?: string; project?: string }>;
+  /**
+   * `error` is a fixed reason code and `ref` is this request's correlation id.
+   * Nothing else is read, and any extra parameter is ignored rather than
+   * rendered, so a hand-edited URL cannot introduce content.
+   */
+  searchParams: Promise<{ error?: string; ref?: string }>;
 };
 
 /**

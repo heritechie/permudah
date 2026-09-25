@@ -358,6 +358,49 @@ describe("createUserOwnedWebApp", () => {
     });
   });
 
+  test("keeps the project number in the sanitized server log", async () => {
+    // The browser no longer receives it, so the operator log is the only place
+    // it must remain, keyed by the same correlation id the user is shown.
+    const logged: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((...args) => void logged.push(args.join(" ")));
+    const { fetchImpl } = fakeGoogleFetch({
+      "script.googleapis.com/v1/projects": {
+        status: 403,
+        body: {
+          error: {
+            code: 403,
+            status: "PERMISSION_DENIED",
+            message:
+              "Google Apps Script API has not been used in project 887739439651 before or it is disabled.",
+            errors: [{ reason: "SERVICE_DISABLED", domain: "googleapis.com" }],
+          },
+        },
+      },
+      "www.googleapis.com/drive/v3/files?": {
+        body: {
+          id: "file-1",
+          name: "App",
+          webViewLink: "https://docs.google.com/spreadsheets/d/file-1/edit",
+        },
+      },
+      "www.googleapis.com/drive/v3/files/file-1": {
+        body: { owners: [{ emailAddress: ownerEmail }] },
+      },
+    });
+
+    const result = await createUserOwnedWebApp(fetchImpl, "token-ok", {
+      appName: POC_WEB_APP_NAME,
+      ownerEmail,
+    }, TEST_CALL_CONTEXT.correlationId);
+
+    expect(result).toMatchObject({ googleProjectNumber: "887739439651" });
+    const output = logged.join("\n");
+    expect(output).toContain("google_provisioning_failed");
+    expect(output).toContain(TEST_CALL_CONTEXT.correlationId);
+    expect(output).toContain("SERVICE_DISABLED");
+    expect(output).toContain("887739439651");
+  });
+
   test("reports no project number when Google did not name one", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { fetchImpl } = fakeGoogleFetch({

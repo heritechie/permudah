@@ -154,8 +154,10 @@ cannot enable an API on Permudah's Cloud project, and pointing them at Google
 Cloud would be both useless and a disclosure of our project layout. It renders a
 generic "configuration problem on our side" message with the correlation
 reference, and the Google code, status, and message stay in the sanitized server
-log. The Google Cloud project number is still parsed for logs, but the page no
-longer renders it.
+log. The Google Cloud project number is extracted for that log line and is
+**never sent to the browser** — not rendered, and not in the redirect URL. The
+correlation id is the only identifier that crosses into the browser, and it is
+the key an operator uses to find the project number in the log.
 
 **Try again** points at `/api/google/auth`, never back at the callback. A retry
 is therefore always a complete new authorization round trip with a new OAuth
@@ -164,17 +166,21 @@ verifier, or token is reused, and the previous access token existed only in the
 failed request's memory.
 
 The page only ever switches on a closed set of literal reason codes. An
-unrecognised `?error=` value renders a generic message, and `project` / `ref` are
-shape-validated before rendering, so no raw Google text can reach the page.
+unrecognised `?error=` value renders a generic message, `ref` is shape-validated
+before rendering, and any other query parameter is ignored, so no raw Google
+text can reach the page.
+
+A failure redirect carries exactly two parameters: `?error=<fixed reason>&ref=<correlation id>`.
 
 ## Troubleshooting: "the API is not enabled yet"
 
 Google reports a disabled API as a `403` whose `status` is the uninformative
 `PERMISSION_DENIED`, with the actionable cause only in `errors[].reason`
 (`SERVICE_DISABLED`, or `ACCESS_NOT_CONFIGURED` from Drive). The flow reads
-every code, maps that pair to `service_disabled`, and shows the user the Google
-Cloud project number from the message plus a support reference, instead of
-telling them their account lacks permission.
+every code, maps that pair to `service_disabled`, and tells the user Permudah has
+a configuration problem plus a support reference, instead of telling them their
+account lacks permission. The Google Cloud project number from the message goes
+to the server log, not to the user.
 
 Every Google API failure writes one structured log line: `correlationId`,
 `operation`, HTTP `status`, the actionable `googleCode`, and a sanitized
