@@ -46,6 +46,7 @@ export type CreateWebAppFailureReason =
   | "unauthorized"
   | "forbidden"
   | "service_disabled"
+  | "apps_script_access_required"
   | "insufficient_scope"
   | "invalid_grant"
   | "not_found"
@@ -73,6 +74,7 @@ const GOOGLE_KIND_TO_REASON: Record<GoogleError["kind"], CreateWebAppFailureReas
   unauthorized: "unauthorized",
   forbidden: "forbidden",
   service_disabled: "service_disabled",
+  apps_script_access_required: "apps_script_access_required",
   insufficient_scope: "insufficient_scope",
   invalid_grant: "invalid_grant",
   not_found: "not_found",

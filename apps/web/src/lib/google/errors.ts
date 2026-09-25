@@ -15,8 +15,18 @@ export type GoogleErrorKind =
    * The Google Cloud project behind this OAuth client does not have the API
    * enabled. This is a deployment/configuration fault, not a user permission
    * problem, and it is actionable because the project id can be reported.
+   *
+   * This is an *operator* fault. The end user cannot fix it, and telling them
+   * to change anything in Google Cloud would be wrong.
    */
   | "service_disabled"
+  /**
+   * The authorized Google account has not granted third-party applications
+   * access to its Apps Script projects. This is a per-user setting the user
+   * completes once at https://script.google.com/home/usersettings, and it is
+   * distinct from the Cloud-project API being disabled.
+   */
+  | "apps_script_access_required"
   /** Requested/returned scope set no longer covers the operation. */
   | "insufficient_scope"
   /** OAuth token exchange rejected (invalid grant / bad code). */
@@ -53,6 +63,33 @@ export class GoogleError extends Error {
 /** Google error codes that mean "this API is not enabled on the project". */
 export const GOOGLE_SERVICE_DISABLED_CODES = ["SERVICE_DISABLED", "ACCESS_NOT_CONFIGURED"] as const;
 
+/**
+ * Where a Google user grants third-party applications access to their Apps
+ * Script projects. It is a per-account setting, separate from enabling an API on
+ * a Cloud project.
+ */
+export const APPS_SCRIPT_USER_SETTINGS_URL = "https://script.google.com/home/usersettings";
+
+/**
+ * Google reports "the user has not enabled the Apps Script API" as a 403 whose
+ * `status` is `PERMISSION_DENIED` and whose `errors[0].reason` is the useless
+ * `forbidden`, with the real cause only in the message:
+ *
+ *   "User has not enabled the Apps Script API. Enable it by visiting
+ *    https://script.google.com/home/usersettings then retry."
+ *
+ * The match is anchored to that one canonical sentence or to the settings URL,
+ * so ordinary 403s are not swept into this state. Only the boolean outcome is
+ * ever used; the message itself stays server-side.
+ */
+function mentionsAppsScriptUserGrant(message: string | null | undefined): boolean {
+  if (typeof message !== "string") return false;
+  return (
+    /user has not enabled the apps script api/i.test(message) ||
+    message.includes(APPS_SCRIPT_USER_SETTINGS_URL)
+  );
+}
+
 function toCodeList(googleCode: string | readonly string[] | null | undefined): string[] {
   if (!googleCode) return [];
   return typeof googleCode === "string" ? [googleCode] : [...googleCode];
@@ -83,6 +120,11 @@ export function kindFromHttpStatus(
   if (GOOGLE_SERVICE_DISABLED_CODES.some((code) => has(code))) {
     return "service_disabled";
   }
+  // Checked after the explicit codes so a Cloud-project misconfiguration always
+  // wins: it is the deeper fault, and a user cannot fix it by granting access.
+  if (status === 403 && mentionsAppsScriptUserGrant(message)) {
+    return "apps_script_access_required";
+  }
   if (message && /insufficient.*scope/i.test(message)) {
     return "insufficient_scope";
   }
@@ -105,6 +147,7 @@ export function kindFromHttpStatus(
  */
 const ACTIONABLE_CODES: Partial<Record<GoogleErrorKind, string[]>> = {
   service_disabled: ["SERVICE_DISABLED", "ACCESS_NOT_CONFIGURED"],
+  apps_script_access_required: ["forbidden", "PERMISSION_DENIED"],
   insufficient_scope: ["insufficientPermissions", "ACCESS_TOKEN_SCOPE_INSUFFICIENT"],
   invalid_grant: ["invalid_grant", "INVALID_GRANT"],
   unauthorized: ["UNAUTHENTICATED", "invalid_token", "INVALID_TOKEN"],

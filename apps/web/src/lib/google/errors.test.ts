@@ -51,6 +51,71 @@ describe("kindFromHttpStatus", () => {
     expect(kindFromHttpStatus(403, ["PERMISSION_DENIED"])).toBe("forbidden");
   });
 
+  test("maps an ungranted per-user Apps Script grant to apps_script_access_required", () => {
+    // The real response when the account has not allowed third-party access to
+    // its script projects: 403, status PERMISSION_DENIED, and a useless
+    // errors[0].reason of "forbidden". The cause is only in the message.
+    const googleMessage =
+      "User has not enabled the Apps Script API. Enable it by visiting " +
+      "https://script.google.com/home/usersettings then retry. If you enabled this API recently, " +
+      "wait a few minutes for the action to propagate to our systems and retry.";
+
+    expect(kindFromHttpStatus(403, ["PERMISSION_DENIED", "forbidden"], googleMessage)).toBe(
+      "apps_script_access_required",
+    );
+    expect(kindFromHttpStatus(403, "forbidden", googleMessage)).toBe("apps_script_access_required");
+    expect(
+      kindFromHttpStatus(403, [], "User has not enabled the Apps Script API. Enable it by visiting it."),
+    ).toBe("apps_script_access_required");
+    // The settings URL alone is also the canonical signal.
+    expect(
+      kindFromHttpStatus(403, [], "See https://script.google.com/home/usersettings and retry."),
+    ).toBe("apps_script_access_required");
+  });
+
+  test("keeps a Cloud-project misconfiguration out of the user-access state", () => {
+    // Both signals can appear; the project fault is deeper and the user cannot
+    // fix it, so it must win.
+    const cloudMessage =
+      "Google Apps Script API has not been used in project 887739439651 before or it is disabled.";
+    expect(kindFromHttpStatus(403, ["PERMISSION_DENIED", "SERVICE_DISABLED"], cloudMessage)).toBe(
+      "service_disabled",
+    );
+    expect(
+      kindFromHttpStatus(
+        403,
+        ["SERVICE_DISABLED"],
+        `${cloudMessage} Visit https://script.google.com/home/usersettings`,
+      ),
+    ).toBe("service_disabled");
+    expect(
+      kindFromHttpStatus(403, ["PERMISSION_DENIED", "ACCESS_NOT_CONFIGURED"], cloudMessage),
+    ).toBe("service_disabled");
+  });
+
+  test("does not treat an ordinary 403 as a user-access problem", () => {
+    expect(
+      kindFromHttpStatus(403, ["PERMISSION_DENIED", "forbidden"], "The caller does not have permission"),
+    ).toBe("forbidden");
+    expect(kindFromHttpStatus(403, "forbidden")).toBe("forbidden");
+    // The user-access signal only applies to a 403.
+    expect(
+      kindFromHttpStatus(
+        500,
+        [],
+        "User has not enabled the Apps Script API. Visit https://script.google.com/home/usersettings",
+      ),
+    ).toBe("google_api_error");
+  });
+
+  test("does not project the settings URL into a project number", () => {
+    expect(
+      extractGoogleProjectNumber(
+        "User has not enabled the Apps Script API. Enable it by visiting https://script.google.com/home/usersettings then retry.",
+      ),
+    ).toBeNull();
+  });
+
   test("falls back to the message when no code identifies a disabled API", () => {
     expect(
       kindFromHttpStatus(
@@ -103,6 +168,9 @@ describe("extractGoogleProjectNumber", () => {
 
 describe("googleErrorCodeForKind", () => {
   test("reports the actionable reason, not the generic status", () => {
+    expect(
+      googleErrorCodeForKind("apps_script_access_required", ["PERMISSION_DENIED", "forbidden"]),
+    ).toBe("forbidden");
     expect(
       googleErrorCodeForKind("service_disabled", ["PERMISSION_DENIED", "SERVICE_DISABLED", "403"]),
     ).toBe("SERVICE_DISABLED");

@@ -76,11 +76,12 @@ means granted == requested and is accepted.
   is requested or read (`access_type=online`).
 - Two HttpOnly, `SameSite=Lax`, 10-minute cookies are HMAC-SHA256 signed with
   `GOOGLE_OAUTH_COOKIE_SECRET` and bound to the Permudah user id:
-  - transaction: `state` + PKCE `code_verifier`, single use, consumed before
-    validation so it cannot be replayed;
-  - result: resource references for the result page, and the transaction
-    signature is purpose-separated so a result cookie can never be replayed as a
-    transaction (or the reverse).
+  - transaction: `state` + PKCE `code_verifier`, bound to the user id and cleared
+    from the response before any validation outcome. It is **not** server-side
+    single-use — see "Known limitations";
+  - result: resource references for the result page, and the cookie signatures
+    are purpose-separated so a result cookie can never be replayed as a
+    transaction (or the reverse). This part *is* enforced server-side.
 - The result page re-verifies the signature, the TTL, the user id, and the Google
   URL host before rendering anything.
 - `GOOGLE_OAUTH_REDIRECT_URI` is required and must be `https` in production, so a
@@ -110,6 +111,62 @@ means granted == requested and is accepted.
   Google resources they just created, and it never happens before provisioning
   succeeded. The browser sees a fixed reason, never a database message.
 
+## Onboarding and the Apps Script API prerequisite
+
+`/google` states the prerequisite before the user authorizes anything:
+
+- **What you'll get** — four bullets, all future tense, and no tick marks.
+  Nothing is ticked, claimed, or linked before provisioning succeeds, because
+  none of those resources exist yet. The page never shows a resource id or a
+  "ready" state.
+- **Google setup** — the per-account Apps Script grant plus a single outbound
+  link to `https://script.google.com/home/usersettings`, and "After enabling it,
+  return here and continue."
+- **Connect your account** — the main action, still `/api/google/auth`.
+
+There is no client-side preflight check and none is possible: Permudah holds no
+Google authorization before the user connects, so Google's API response is the
+only source of truth. The page never claims to have verified anything.
+
+### Two different 403s, two different states
+
+Google returns a 403 for two unrelated Apps Script problems, and they need
+opposite handling:
+
+| Google response | Meaning | Reason | Who fixes it |
+| --- | --- | --- | --- |
+| `errors[0].reason: "forbidden"`, message "User has not enabled the Apps Script API. Enable it by visiting https://script.google.com/home/usersettings then retry." | The account has not granted third-party apps access to its script projects | `apps_script_access_required` | The user, once |
+| `errors[0].reason: "SERVICE_DISABLED"` / `ACCESS_NOT_CONFIGURED` | The API is not enabled on Permudah's Cloud project | `service_disabled` | Permudah's operator |
+
+`kindFromHttpStatus` separates them: the explicit `SERVICE_DISABLED` /
+`ACCESS_NOT_CONFIGURED` codes are checked first, so a Cloud-project fault always
+wins even when the message also mentions the settings URL. Only then is the
+canonical "user has not enabled the Apps Script API" sentence (or that exact
+settings URL) matched. Only the boolean outcome is used — the message stays
+server-side.
+
+`apps_script_access_required` renders the user state: "Allow Apps Script access",
+**Open Apps Script settings**, **Try again**, and "After enabling it, return here
+and try again."
+
+`service_disabled` deliberately does **not** offer the settings link. The user
+cannot enable an API on Permudah's Cloud project, and pointing them at Google
+Cloud would be both useless and a disclosure of our project layout. It renders a
+generic "configuration problem on our side" message with the correlation
+reference, and the Google code, status, and message stay in the sanitized server
+log. The Google Cloud project number is still parsed for logs, but the page no
+longer renders it.
+
+**Try again** points at `/api/google/auth`, never back at the callback. A retry
+is therefore always a complete new authorization round trip with a new OAuth
+state, a new PKCE verifier, and a new transaction cookie — no prior state,
+verifier, or token is reused, and the previous access token existed only in the
+failed request's memory.
+
+The page only ever switches on a closed set of literal reason codes. An
+unrecognised `?error=` value renders a generic message, and `project` / `ref` are
+shape-validated before rendering, so no raw Google text can reach the page.
+
 ## Troubleshooting: "the API is not enabled yet"
 
 Google reports a disabled API as a `403` whose `status` is the uninformative
@@ -127,6 +184,31 @@ headers, and email addresses, and caps the length. Fields are allow-listed.
 The `correlationId` in the log is the same value shown to the user as their
 support reference, so a failed run can be traced without exposing anything
 sensitive.
+
+## Known limitations
+
+### The OAuth transaction cookie is not server-side single-use
+
+The OAuth transaction cookie is signed, short-lived, and bound to the
+authenticated user. The transaction cookie is not server-side single-use in B1;
+Google authorization codes remain single-use.
+
+Concretely, the callback deletes the cookie from the response before any
+validation outcome, so a normal browser never sends it twice. But there is no
+durable consumed marker, so a second callback that presents the same cookie value
+is re-validated rather than rejected. What actually bounds the impact today:
+
+- The cookie is HMAC-signed, so it cannot be forged.
+- It is bound to a `userId` that the current authenticated session must match, so
+  only the same signed-in user can present it.
+- It expires in 10 minutes.
+- Google authorization codes are single-use, so a replayed exchange fails with
+  `invalid_grant` and surfaces as `token_exchange_failed`.
+
+B1 deliberately does not add replay-state infrastructure (no KV, no transaction
+table, no `consumed_at` column). If replay defence is needed beyond the above,
+the options are a consumed-marker in the database or a server-side store — both
+are real schema/operational changes and are out of scope for this milestone.
 
 ## Setup
 
@@ -193,7 +275,7 @@ already runs.
 ## Tests
 
 - `apps/web/src/lib/google/*.test.ts` — PKCE/state, token parsing, error mapping, ownership, deployment manifest, orchestration order and cleanup, signed cookies, structured logging, and the registry.
-- `apps/web/src/app/api/google/auth/route.test.ts` and `callback/route.test.ts` — authenticated start, user-bound callback, single-use transaction, fail-closed config, registry persistence and registry failure.
+- `apps/web/src/app/api/google/auth/route.test.ts` and `callback/route.test.ts` — authenticated start, user-bound callback, transaction-cookie clearing, fail-closed config, registry persistence and registry failure.
 - `apps/web/src/lib/google/registry-migration.test.ts` — the migrations' RLS, grants, and `SECURITY DEFINER` properties.
 - `apps/web/src/lib/google/registry-security.test.ts` — no elevated credential is referenced, the write is an RPC, and `userId` comes from the session.
 - `apps/web/src/app/google/page.test.tsx` — anonymous redirect and actionable error copy.

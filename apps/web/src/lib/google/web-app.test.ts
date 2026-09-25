@@ -284,6 +284,80 @@ describe("createUserOwnedWebApp", () => {
     });
   });
 
+  test("returns apps_script_access_required when the account never granted script access", async () => {
+    // The per-user grant, not a Cloud-project fault: the user can fix this at
+    // script.google.com/home/usersettings.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { fetchImpl } = fakeGoogleFetch({
+      "script.googleapis.com/v1/projects": {
+        status: 403,
+        body: {
+          error: {
+            code: 403,
+            status: "PERMISSION_DENIED",
+            message:
+              "User has not enabled the Apps Script API. Enable it by visiting https://script.google.com/home/usersettings then retry. If you enabled this API recently, wait a few minutes for the action to propagate to our systems and retry.",
+            errors: [{ message: "User has not enabled the Apps Script API.", domain: "global", reason: "forbidden" }],
+          },
+        },
+      },
+      "www.googleapis.com/drive/v3/files?": {
+        body: {
+          id: "file-1",
+          name: "App",
+          webViewLink: "https://docs.google.com/spreadsheets/d/file-1/edit",
+        },
+      },
+      "www.googleapis.com/drive/v3/files/file-1": {
+        body: { owners: [{ emailAddress: ownerEmail }] },
+      },
+    });
+
+    const result = await createUserOwnedWebApp(fetchImpl, "token-ok", {
+      appName: POC_WEB_APP_NAME,
+      ownerEmail,
+    }, TEST_CALL_CONTEXT.correlationId);
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "apps_script_access_required",
+      correlationId: TEST_CALL_CONTEXT.correlationId,
+      // There is no Cloud project to report for a per-user grant problem.
+      googleProjectNumber: null,
+    });
+  });
+
+  test("returns service_disabled for the ACCESS_NOT_CONFIGURED variant too", async () => {
+    // Drive reports the same missing-API condition as ACCESS_NOT_CONFIGURED
+    // instead of SERVICE_DISABLED. Both must reach the UI as a setup state
+    // rather than as a permission failure.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { fetchImpl } = fakeGoogleFetch({
+      "www.googleapis.com/drive/v3/files?": {
+        status: 403,
+        body: {
+          error: {
+            code: 403,
+            status: "PERMISSION_DENIED",
+            message: "Access Not Configured. Please ask your administrator to configure your API.",
+            errors: [{ reason: "ACCESS_NOT_CONFIGURED", domain: "global" }],
+          },
+        },
+      },
+    });
+
+    const result = await createUserOwnedWebApp(fetchImpl, "token-ok", {
+      appName: POC_WEB_APP_NAME,
+      ownerEmail,
+    }, TEST_CALL_CONTEXT.correlationId);
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "service_disabled",
+      correlationId: TEST_CALL_CONTEXT.correlationId,
+    });
+  });
+
   test("reports no project number when Google did not name one", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { fetchImpl } = fakeGoogleFetch({

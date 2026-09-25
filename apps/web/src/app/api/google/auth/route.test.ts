@@ -101,6 +101,34 @@ describe("GET /api/google/auth", () => {
     );
   });
 
+  test("mints an entirely new transaction when the user retries", async () => {
+    // The /google setup state's "Try again" points here, so a retry must never
+    // reuse a prior transaction or its PKCE verifier: a new state, a new
+    // verifier, and a new cookie are issued every time.
+    setEnv({ ...FULL_ENV, NODE_ENV: "test" });
+    const store = setup();
+
+    const first = await GET(new Request("https://permudah.com/api/google/auth"));
+    const firstCookie = store.map.get("permudah_google_oauth_txn")!;
+    const firstTransaction = await readGoogleOAuthTransaction(COOKIE_SECRET, firstCookie, {
+      ttlMs: 10 * 60 * 1000,
+    });
+
+    const second = await GET(new Request("https://permudah.com/api/google/auth"));
+    const secondCookie = store.map.get("permudah_google_oauth_txn")!;
+    const secondTransaction = await readGoogleOAuthTransaction(COOKIE_SECRET, secondCookie, {
+      ttlMs: 10 * 60 * 1000,
+    });
+
+    expect(first.status).toBe(307);
+    expect(second.status).toBe(307);
+    expect(second.headers.get("location")).toContain("accounts.google.com");
+    expect(secondCookie).not.toBe(firstCookie);
+    expect(secondTransaction?.state).not.toBe(firstTransaction?.state);
+    expect(secondTransaction?.codeVerifier).not.toBe(firstTransaction?.codeVerifier);
+    expect(secondTransaction?.userId).toBe("user-1");
+  });
+
   test("sends an unauthenticated visitor to login instead of Google", async () => {
     setEnv({ ...FULL_ENV, NODE_ENV: "test" });
     const store = setup({ userId: null });

@@ -28,7 +28,11 @@ export const dynamic = "force-dynamic";
  * Final step of the Permudah -> Google flow.
  *
  * - Requires the same authenticated Permudah user that started the flow.
- * - Validates the single-use, HMAC-signed, user-bound OAuth transaction cookie.
+ * - Validates the HMAC-signed, short-lived, user-bound OAuth transaction
+ *   cookie. That cookie is NOT server-side single-use in B1: it is cleared from
+ *   the response on every outcome, but there is no durable consumed marker, so
+ *   a replayed callback carrying the same value is re-validated rather than
+ *   rejected. See "Known limitations" in docs/milestone-b1-google-web-app.md.
  * - Exchanges the code server-side and uses the access token for one
  *   provisioning run; the token is never persisted or returned.
  * - Redirects to a result page that reads a short-lived, signed, user-bound
@@ -97,7 +101,9 @@ export async function GET(request: Request) {
 
   const cookieStore = await cookies();
   const transactionCookie = cookieStore.get(GOOGLE_OAUTH_TRANSACTION_COOKIE)?.value ?? null;
-  // Single use: consume the transaction before any validation outcome.
+  // Clear the transaction from the response before any validation outcome, so a
+  // normal browser never sends it twice. This is NOT a durable consumed marker:
+  // a replayed callback presenting the same value is re-validated, not rejected.
   cookieStore.delete(GOOGLE_OAUTH_TRANSACTION_COOKIE);
 
   if (url.searchParams.get("error")) {

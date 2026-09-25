@@ -161,7 +161,7 @@ describe("GET /api/google/callback", () => {
     expect(location).not.toContain("creator@example.com");
     expect(await response.text()).not.toContain("ya29.secret");
 
-    // The transaction cookie is single-use.
+    // The transaction cookie is cleared from the response.
     expect(store.map.has(TXN_COOKIE)).toBe(false);
 
     const resultCookie = store.map.get(RESULT_COOKIE);
@@ -174,6 +174,18 @@ describe("GET /api/google/callback", () => {
       webAppUrl: "https://script.google.com/macros/s/abc/exec",
       spreadsheetId: "sheet-1",
     });
+  });
+
+  test("clears the transaction cookie on success so the browser drops it", async () => {
+    setEnv(FULL_ENV);
+    const store = happyFlow(await transactionCookie());
+
+    await GET(new Request(`${baseUrl}?code=code-1&state=state-good`));
+
+    // No token-bearing transaction survives the redirect. A retry must go back
+    // through /api/google/auth, which mints new state, a new PKCE verifier, and a
+    // new cookie; the authorization code is what Google enforces as single-use.
+    expect(store.map.has(TXN_COOKIE)).toBe(false);
   });
 
   test("uses the configured redirect uri and the signed code verifier for the exchange", async () => {
@@ -448,19 +460,20 @@ describe("GET /api/google/callback", () => {
     expect(response.headers.get("location")).toContain("error=missing_config");
     expect(exchangeGoogleAuthorizationCode).not.toHaveBeenCalled();
   });
-  test("consumes the transaction cookie before any validation outcome", async () => {
+  test("clears the transaction cookie before any validation outcome", async () => {
     setEnv(FULL_ENV);
     const store = happyFlow(await transactionCookie());
 
     await GET(new Request(`${baseUrl}?code=code-1&state=state-good`));
 
-    // Replay protection: the cookie is deleted, not merely read, so a repeated
-    // callback with the same browser state cannot reuse it.
+    // The cookie is deleted from the response, not merely read, so the browser
+    // drops it. This is not a server-side single-use guard: there is no durable
+    // consumed marker, so a replayed callback would be re-validated.
     expect(store.delete).toHaveBeenCalledWith(TXN_COOKIE);
     expect(store.map.has(TXN_COOKIE)).toBe(false);
   });
 
-  test("consumes the transaction cookie even when the state does not match", async () => {
+  test("clears the transaction cookie even when the state does not match", async () => {
     setEnv(FULL_ENV);
     const store = happyFlow(await transactionCookie());
 
@@ -482,8 +495,9 @@ describe("GET /api/google/callback", () => {
     expect(exchangeGoogleAuthorizationCode).not.toHaveBeenCalled();
     expect(createUserOwnedWebApp).not.toHaveBeenCalled();
     expect(recordProvisionedGoogleWebApp).not.toHaveBeenCalled();
-    // The leftover transaction cookie cannot be replayed: it is bound to a
-    // userId that a future session must match, and the code is single-use.
+    // The leftover transaction cookie is bound to a userId that a future session
+    // must match, which limits who could present it again. It is not a
+    // single-use guard in its own right; the code is what Google makes single-use.
     expect(store.map.has(RESULT_COOKIE)).toBe(false);
   });
 
@@ -588,5 +602,31 @@ describe("GET /api/google/callback", () => {
     const location = new URL(response.headers.get("location")!);
     expect(location.searchParams.get("error")).toBe("service_disabled");
     expect(location.searchParams.has("project")).toBe(false);
+  });
+
+  test("forwards apps_script_access_required as its own reason", async () => {
+    setEnv(FULL_ENV);
+    const store = happyFlow(await transactionCookie());
+    vi.mocked(createUserOwnedWebApp).mockResolvedValue({
+      ok: false,
+      reason: "apps_script_access_required",
+      message:
+        "User has not enabled the Apps Script API. Enable it by visiting https://script.google.com/home/usersettings then retry.",
+      correlationId: "corr-user-grant",
+      googleProjectNumber: null,
+    });
+
+    const response = await GET(new Request(`${baseUrl}?code=code-1&state=state-good`));
+
+    const location = new URL(response.headers.get("location")!);
+    expect(location.pathname).toBe("/google");
+    expect(location.searchParams.get("error")).toBe("apps_script_access_required");
+    expect(location.searchParams.get("ref")).toBe("corr-user-grant");
+    // The raw Google message never reaches the URL.
+    const href = response.headers.get("location")!;
+    expect(href).not.toContain("has not been enabled");
+    expect(href).not.toContain("script.google.com");
+    expect(href).not.toContain("User%20has%20not");
+    expect(store.map.has(RESULT_COOKIE)).toBe(false);
   });
 });
